@@ -43,7 +43,7 @@ def default(config, params):
 def debug(config, params):
   with params.unlocked:
     params.collect_every = 20
-    params.batch_shape = [5, 10]
+    params.batch_shape = [5, 10] #rssm.py has only a 1d batch.. so 10 must be sequence length
     params.train_steps = 30
     params.test_steps = 30
     params.max_steps = 100 * (30 * 30)
@@ -88,6 +88,9 @@ def _model_components(config, params):
         params.get('future_rnn', False),
         params.get('mean_only', False),
         params.get('min_stddev', 1e-1))
+        #ADR NB:
+        # state_size, belief_size, embed_size, future_rnn=False, mean_only=False, min_stddev=1e-5
+        # BUG on future_rnn?
   else:
     raise NotImplementedError("Unknown model '{}.".format(params.model))
   return config

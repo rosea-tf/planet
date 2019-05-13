@@ -44,7 +44,7 @@ def define_model(data, trainer, config):
     del obs['length']
 
   # Instantiate network blocks.
-  cell = config.cell()
+  cell = config.cell() #RSSM
   kwargs = dict()
   encoder = tf.make_template(
       'encoder', config.encoder, create_scope_now_=True, **kwargs)
@@ -55,29 +55,44 @@ def define_model(data, trainer, config):
     heads[key] = tf.make_template(name, head, create_scope_now_=True, **kwargs)
 
   # Embed observations and unroll model.
-  embedded = encoder(obs)
+  embedded = encoder(obs) #[5x10x1024] <- [..., 5x10x64x64x3, ..., ... (other elements in obs: ignored)]
+  # so the "encoder" here is NOT the q(s|o) encoder in the paper??
+  # the function is seemingly found at networks.conv_ha:
+  #   "Extract deterministic features from an observation"
+  #   Q: does it get trained? it doesn't have trainable=False, so...
+
   # Separate overshooting and zero step observations because computing
   # overshooting targets for images would be expensive.
-  zero_step_obs = {}
-  overshooting_obs = {}
+  zero_step_obs = {} # both of these are 5x10xd
+  overshooting_obs = {} 
   for key, value in obs.items():
     if config.zero_step_losses.get(key):
       zero_step_obs[key] = value
     if config.overshooting_losses.get(key):
-      overshooting_obs[key] = value
+      overshooting_obs[key] = value #for now, they're identical
   assert config.overshooting <= config.batch_shape[1]
   target, prior, posterior, mask = tools.overshooting(
       cell, overshooting_obs, embedded, prev_action, data['length'],
-      config.overshooting + 1)
+      config.overshooting + 1) #aha: 10 (= 9 + 1) is the overshooting length! ... but we're already feeding in 5x10 tensors. so seq is length 10 then predict 10 out from each step of that seq. #prior is result ofunrolling. posterior is what the unroll starts from.
   losses = []
 
-  # Zero step losses.
+  # Zero step losses. Reconstruction??
+  
+  # :1 = only first timestep?? result=[5x10x1x30]: a horizontal row in fig3c
   _, zs_prior, zs_posterior, zs_mask = tools.nested.map(
       lambda tensor: tensor[:, :, :1], (target, prior, posterior, mask))
-  zs_target = {key: value[:, :, None] for key, value in zero_step_obs.items()}
+  zs_target = {key: value[:, :, None] for key, value in zero_step_obs.items()} #images, rewards
   zero_step_losses = utility.compute_losses(
-      config.zero_step_losses, cell, heads, step, zs_target, zs_prior,
-      zs_posterior, zs_mask, config.free_nats, debug=config.debug)
+      loss_scales=config.zero_step_losses, 
+      cell=cell, 
+      heads=heads, # outputs other than prior, posterior
+      step=step,
+      target=zs_target,
+      prior=zs_prior,
+      posterior=zs_posterior,
+      mask=zs_mask,
+      free_nats=config.free_nats,
+      debug=config.debug)
   losses += [
       loss * config.zero_step_losses[name] for name, loss in
       zero_step_losses.items()]
@@ -88,11 +103,20 @@ def define_model(data, trainer, config):
   if config.overshooting > 1:
     os_target, os_prior, os_posterior, os_mask = tools.nested.map(
         lambda tensor: tensor[:, :, 1:-1], (target, prior, posterior, mask))
+        # everything AFTER step 0 in prediction/11 dim
     if config.stop_os_posterior_gradient:
       os_posterior = tools.nested.map(tf.stop_gradient, os_posterior)
     overshooting_losses = utility.compute_losses(
-        config.overshooting_losses, cell, heads, step, os_target, os_prior,
-        os_posterior, os_mask, config.free_nats, debug=config.debug)
+      config.overshooting_losses, #doesn't include image
+      cell, 
+      heads, 
+      step, 
+      os_target, 
+      os_prior,
+      os_posterior, 
+      os_mask, 
+      config.free_nats, 
+      debug=config.debug)
     losses += [
         loss * config.overshooting_losses[name] for name, loss in
         overshooting_losses.items()]

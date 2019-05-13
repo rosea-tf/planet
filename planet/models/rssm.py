@@ -23,8 +23,8 @@ from planet import tools
 from planet.models import base
 
 
-class RSSM(base.Base):
-  """Deterministic and stochastic state model.
+class RSSM(base.Base): #inherits from RNN cell
+  r"""Deterministic and stochastic state model.
 
   The stochastic latent is computed from the hidden state at the same time
   step. If an observation is present, the posterior latent is compute from both
@@ -42,16 +42,16 @@ class RSSM(base.Base):
                   ^
                   :
                  (o)
-  """
+  """ # is this diagram what "temporal prior" refers to?
 
   def __init__(
       self, state_size, belief_size, embed_size,
       future_rnn=False, mean_only=False, min_stddev=1e-5):
-    self._state_size = state_size
-    self._belief_size = belief_size
+    self._state_size = state_size # dim of latent state?: 30
+    self._belief_size = belief_size # h and s??? both these come from model_size->size in configs.py: 200
     self._embed_size = embed_size
     self._future_rnn = future_rnn
-    self._cell = tf.contrib.rnn.GRUBlockCell(self._belief_size)
+    self._cell = tf.contrib.rnn.GRUBlockCell(self._belief_size) #num_units (i.e. output size)=200
     self._kwargs = dict(units=self._embed_size, activation=tf.nn.relu)
     self._mean_only = mean_only
     self._min_stddev = min_stddev
@@ -62,10 +62,10 @@ class RSSM(base.Base):
   @property
   def state_size(self):
     return {
-        'mean': self._state_size,
+        'mean': self._state_size, #so mean is a ~30D vector...
         'stddev': self._state_size,
         'sample': self._state_size,
-        'belief': self._belief_size,
+        'belief': self._belief_size, #observation space??
         'rnn_state': self._belief_size,
     }
 
@@ -84,21 +84,25 @@ class RSSM(base.Base):
 
   def divergence_from_states(self, lhs, rhs, mask):
     """Compute the divergence measure between two states."""
+    """ADR NB: state is a tuple of ['mean','stddev', ...]"""
     lhs = self.dist_from_state(lhs, mask)
     rhs = self.dist_from_state(rhs, mask)
     return tools.mask(tfd.kl_divergence(lhs, rhs), mask)
 
   def _transition(self, prev_state, prev_action, zero_obs):
     """Compute prior next state by applying the transition dynamics."""
+    # a_1, h_1 -> h_2 in Fig 2c
     inputs = tf.concat([prev_state['sample'], prev_action], -1)
     hidden = tf.layers.dense(inputs, **self._kwargs)
     belief, rnn_state = self._cell(hidden, prev_state['rnn_state'])
+    # returns output, hidden_state. Per GRU diagram and TF source code, these are actually the same! bx200
+
     if self._future_rnn:
       hidden = belief
-    hidden = tf.layers.dense(hidden, **self._kwargs)
+    hidden = tf.layers.dense(hidden, **self._kwargs) #??? RNN output used in posterior
     mean = tf.layers.dense(hidden, self._state_size, None)
     stddev = tf.layers.dense(hidden, self._state_size, tf.nn.softplus)
-    stddev += self._min_stddev
+    stddev += self._min_stddev #??? not a min operation?
     if self._mean_only:
       sample = mean
     else:
@@ -113,9 +117,10 @@ class RSSM(base.Base):
 
   def _posterior(self, prev_state, prev_action, obs):
     """Compute posterior state from previous state and current observation."""
+    #obs dim 1024: 
     prior = self._transition_tpl(prev_state, prev_action, tf.zeros_like(obs))
-    inputs = tf.concat([prior['belief'], obs], -1)
-    hidden = tf.layers.dense(inputs, **self._kwargs)
+    inputs = tf.concat([prior['belief'], obs], -1) #200 + 1024 = 224
+    hidden = tf.layers.dense(inputs, **self._kwargs) #200 again
     mean = tf.layers.dense(hidden, self._state_size, None)
     stddev = tf.layers.dense(hidden, self._state_size, tf.nn.softplus)
     stddev += self._min_stddev

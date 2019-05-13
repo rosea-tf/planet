@@ -157,11 +157,11 @@ def train(model_fn, datasets, logdir, config):
   trainer = trainer_.Trainer(logdir, config=config)
   with tf.variable_scope('graph', use_resource=True):
     data = get_batch(datasets, trainer.phase, trainer.reset)
-    score, summary = model_fn(data, trainer, config)
+    score, summary = model_fn(data, trainer, config) # tf graph set up here. model_fn=define_model()
     message = 'Graph contains {} trainable variables.'
     tf.logging.info(message.format(tools.count_weights()))
     if config.train_steps:
-      trainer.add_phase(
+      trainer.add_phase( #training.py/Trainer()
           'train', config.train_steps, score, summary,
           batch_size=config.batch_shape[0],
           report_every=None,
@@ -183,8 +183,13 @@ def train(model_fn, datasets, logdir, config):
 def compute_losses(
     loss_scales, cell, heads, step, target, prior, posterior, mask,
     free_nats=None, debug=False):
+  """ ADR
+  a kind of wrapper/manager for loss computation
+  The mathematical work seems to take place in rssm.py/divergence_from_states()
+  """
   features = cell.features_from_state(posterior)
   losses = {}
+  #loss_scales contains a set of weights for each component of the loss
   for key, scale in loss_scales.items():
     # Skip losses with zero or None scale to save computation.
     if not scale:
@@ -271,7 +276,7 @@ def collect_initial_episodes(config):
   items = config.random_collects.items()
   items = sorted(items, key=lambda x: x[0])
   existing = {}
-  for name, params in items:
+  for name, params in items: #test-cheetah, train-cheetah
     outdir = params.save_episode_dir
     tf.gfile.MakeDirs(outdir)
     if outdir not in existing:

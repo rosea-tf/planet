@@ -196,7 +196,7 @@ class Run(object):
         args = ()
       if not isinstance(args, tuple):
         args = (args,)
-      for value in self._process_fn(self._logdir, *args):
+      for value in self._process_fn(self._logdir, *args): #train.py/process()
         if not self._running[0]:
           break
         yield value

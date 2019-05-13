@@ -29,8 +29,8 @@ def overshooting(
     cell, target, embedded, prev_action, length, amount, ignore_input=False):
   """Perform open loop rollouts from the posteriors at every step.
 
-  First, we apply the encoder to embed raw inputs and apply the model to obtain
-  posterior states for every time step. Then, we perform `amount` long open
+  First, we apply the encoder to embed [1024]  raw inputs [64x64x3] and apply the model to obtain
+  posterior states [30] for every time step. Then, we perform `amount` long open
   loop rollouts from these posteriors.
 
   Note that the actions should be those leading to the current time step. So
@@ -65,10 +65,11 @@ def overshooting(
       [1 1 1 1 0 0] [1 1 1 0 0 0]
       [1 1 1 0 0 0] [1 1 0 0 0 0]
 
-  """
+  """ #so, target = posterior s (from s-1, o)?
+  
   # Closed loop unroll to get posterior states, which are the starting points
   # for open loop unrolls. We don't need the last time step, since we have no
-  # targets for unrolls from it.
+  # targets for unrolls from it [ADR: s3|3 in fig 3c]
   use_obs = tf.ones(tf.shape(
       nested.flatten(embedded)[0][:, :, :1])[:3], tf.bool)
   use_obs = tf.cond(
@@ -78,10 +79,20 @@ def overshooting(
   (prior, posterior), _ = tf.nn.dynamic_rnn(
       cell, (embedded, prev_action, use_obs), length, dtype=tf.float32,
       swap_memory=True)
+  """tf.nn.dynamic_rnn(
+      cell,
+      inputs,
+      sequence_length=None,
+      initial_state=None,
+      dtype=None, ..."""
+      # Creates a recurrent neural network specified by RNNCell cell(=RSSM())
+      # here, 'sample' is prior: (s'|s,a) and posterior: (s'|s,a,o')
+      # recall, 'belief' is the 'h' [200] box, which is unaffected by 'o'
+      # in the same timestep, i.e. prior belief = post. belief
 
   # Arrange inputs for every iteration in the open loop unroll. Every loop
   # iteration below corresponds to one row in the docstring illustration.
-  max_length = shape.shape(nested.flatten(embedded)[0])[1]
+  max_length = shape.shape(nested.flatten(embedded)[0])[1] #10, in debug case
   first_output = {
       'observ': embedded,
       'prev_action': prev_action,
@@ -90,23 +101,23 @@ def overshooting(
       'mask': tf.sequence_mask(length, max_length, tf.int32),
   }
   progress_fn = lambda tensor: tf.concat([tensor[:, 1:], 0 * tensor[:, :1]], 1)
-  other_outputs = tf.scan(
+  other_outputs = tf.scan( #applies fn in arg0 to tensorts in arg1
       lambda past_output, _: nested.map(progress_fn, past_output),
-      tf.range(amount), first_output)
-  sequences = nested.map(
+      tf.range(amount), first_output) #10x5x10x30
+  sequences = nested.map( #Apply a function to every element in a nested structure
       lambda lhs, rhs: tf.concat([lhs[None], rhs], 0),
-      first_output, other_outputs)
+      first_output, other_outputs) #11x5x10x30??? where 5 is batch, 1
 
   # Merge batch and time dimensions of steps to compute unrolls from every
   # time step as one batch. The time dimension becomes the number of
   # overshooting distances.
   sequences = nested.map(
       lambda tensor: _merge_dims(tensor, [1, 2]),
-      sequences)
+      sequences) #merge dims 1 and 2
   sequences = nested.map(
       lambda tensor: tf.transpose(
           tensor, [1, 0] + list(range(2, tensor.shape.ndims))),
-      sequences)
+      sequences) #swap dims 0 and 1
   merged_length = tf.reduce_sum(sequences['mask'], 1)
 
   # Mask out padding frames; unnecessary if the input is already masked.
@@ -126,12 +137,15 @@ def overshooting(
   (priors, _), _ = tf.nn.dynamic_rnn(
       cell, (sequences['observ'], sequences['prev_action'], use_obs),
       merged_length,
-      prev_state)
+      prev_state) #returns pair: outputs=(priors, posteriors), state
+      # recall: RSSM inputs: (prev_state, prev_action, zero_obs)
+      # now all elements of 'priors' in 50x11xd shape
 
   # Restore batch dimension.
   target, prior, posterior, mask = nested.map(
       functools.partial(_restore_batch_dim, batch_size=shape.shape(length)[0]),
       (sequences['target'], priors, sequences['posterior'], sequences['mask']))
+      #now in 5x10x11x30 (11 is prediction?)
 
   mask = tf.cast(mask, tf.bool)
   return target, prior, posterior, mask

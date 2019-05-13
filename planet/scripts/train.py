@@ -50,6 +50,11 @@ matplotlib.use('Agg')
 import ruamel.yaml as yaml
 import tensorflow as tf
 
+# # ADDITION TO SUPPORT THIS SCRIPT BEING RUN DIRECTLY
+# if os.path.basename(sys.path[0]) == 'scripts':
+#     # back up to 'planet' folder
+#     sys.path[0] = os.path.dirname(os.path.dirname(sys.path[0]))
+
 from planet import tools
 from planet import training
 from planet.scripts import configs
@@ -61,8 +66,10 @@ def process(logdir, args):
   config = tools.AttrDict()
   with config.unlocked:
     config = getattr(configs, args.config)(config, args.params)
-  training.utility.collect_initial_episodes(config)
+  training.utility.collect_initial_episodes(config) #very quick
   tf.reset_default_graph()
+  
+  # read in the just-created initial episodes
   dataset = tools.numpy_episodes(
       config.train_dir, config.test_dir, config.batch_shape,
       loader=config.data_loader,
@@ -112,6 +119,10 @@ if __name__ == '__main__':
       '--resume_runs', type=boolean, default=True,
       help='Whether to resume unfinished runs in the log directory.')
   args_, remaining = parser.parse_known_args()
+
+#   print(args_)
+#   print("REM", remaining)
+
   args_.params = tools.AttrDict(yaml.safe_load(args_.params.replace('#', ',')))
   args_.logdir = args_.logdir and os.path.expanduser(args_.logdir)
   remaining.insert(0, sys.argv[0])
