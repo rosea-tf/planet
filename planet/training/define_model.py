@@ -95,7 +95,7 @@ def define_model(data, trainer, config):
       debug=config.debug)
   losses += [
       loss * config.zero_step_losses[name] for name, loss in
-      zero_step_losses.items()]
+      zero_step_losses.items()] #scale gets applied here
   if 'divergence' not in zero_step_losses:
     zero_step_losses['divergence'] = tf.zeros((), dtype=tf.float32)
 
