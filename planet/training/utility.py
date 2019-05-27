@@ -121,6 +121,7 @@ def get_batch(datasets, phase, reset):
   if not isinstance(data, dict):
     data = {'data': data}
   if 'length' not in data:
+    # pick the first element of data[]
     example = data[list(data.keys())[0]]
     data['length'] = (
         tf.zeros((tf.shape(example)[0],), tf.int32) + tf.shape(example)[1])
@@ -188,6 +189,10 @@ def compute_losses(
   The mathematical work seems to take place in rssm.py/divergence_from_states()
   """
   features = cell.features_from_state(posterior)
+  """
+  Extract features for the decoder network from a prior or posterior.
+    return tf.concat([state['sample'], state['belief']], -1)
+  """
   losses = {}
   #loss_scales contains a set of weights for each component of the loss
   for key, scale in loss_scales.items():
@@ -206,8 +211,8 @@ def compute_losses(
       loss = cell.divergence_from_states(posterior, global_prior, mask)
       loss = tf.reduce_sum(loss, 1) / tf.reduce_sum(tf.to_float(mask), 1)
     elif key in heads:
-      output = heads[key](features)
-      loss = -tools.mask(output.log_prob(target[key]), mask)
+      output = heads[key](features) #features is belief + state (230): heads[key] is a function that returns a tf.distribution. Note that heads is a tf.make_template of config.heads
+      loss = -tools.mask(output.log_prob(target[key]), mask) 
     else:
       message = "Loss scale references unknown head '{}'."
       raise KeyError(message.format(key))

@@ -78,10 +78,10 @@ def define_model(data, trainer, config):
 
   # Zero step losses. Reconstruction??
   
-  # :1 = only first timestep?? result=[5x10x1x30]: a horizontal row in fig3c
+  # :1 = only first prediction. result=[5x10x1x30]: a horizontal row in fig3c
   _, zs_prior, zs_posterior, zs_mask = tools.nested.map(
       lambda tensor: tensor[:, :, :1], (target, prior, posterior, mask))
-  zs_target = {key: value[:, :, None] for key, value in zero_step_obs.items()} #images, rewards
+  zs_target = {key: value[:, :, None] for key, value in zero_step_obs.items()} #images, rewards # add an extra dimension at the end. #TODO? confirm what these are
   zero_step_losses = utility.compute_losses(
       loss_scales=config.zero_step_losses, 
       cell=cell, 

@@ -89,6 +89,7 @@ def overshooting(
       # here, 'sample' is prior: (s'|s,a) and posterior: (s'|s,a,o')
       # recall, 'belief' is the 'h' [200] box, which is unaffected by 'o'
       # in the same timestep, i.e. prior belief = post. belief
+      # so we have b x s x 200(or whatever) here
 
   # Arrange inputs for every iteration in the open loop unroll. Every loop
   # iteration below corresponds to one row in the docstring illustration.
@@ -102,11 +103,96 @@ def overshooting(
   }
   progress_fn = lambda tensor: tf.concat([tensor[:, 1:], 0 * tensor[:, :1]], 1)
   other_outputs = tf.scan( #applies fn in arg0 to tensorts in arg1
-      lambda past_output, _: nested.map(progress_fn, past_output),
-      tf.range(amount), first_output) #10x5x10x30
+      fn=lambda past_output, _: nested.map(progress_fn, past_output),
+      elems=tf.range(amount), initializer=first_output) #10x5x10x30: this is just a shoop of first_output
+
+  """
+  So what's this thing just done?
+  if we have first_output = b2 x seq3 x dim5:
+    
+  array([[[1. , 1.2, 1.4, 1.6, 1.8],
+        [2. , 2.2, 2.4, 2.6, 2.8],
+        [3. , 3.2, 3.4, 3.6, 3.8]],
+
+       [[5. , 5.2, 5.4, 5.6, 5.8],
+        [6. , 6.2, 6.4, 6.6, 6.8],
+        [7. , 7.2, 7.4, 7.6, 7.8]]]
+
+  Then we get an other_outputs of 3x2x3x5:
+  EACH MAJOR ENTRY: time shift fwd 1, pad with zeros
+  LAST MAJOR ENTRY: all zeros!
+  Note that the seq=0 entry of each batch sample doesn't appear in other_outputs
+
+  array([[[[2. , 2.2, 2.4, 2.6, 2.8],
+         [3. , 3.2, 3.4, 3.6, 3.8],
+         [0. , 0. , 0. , 0. , 0. ]],
+
+        [[6. , 6.2, 6.4, 6.6, 6.8],
+         [7. , 7.2, 7.4, 7.6, 7.8],
+         [0. , 0. , 0. , 0. , 0. ]]],
+
+
+       [[[3. , 3.2, 3.4, 3.6, 3.8],
+         [0. , 0. , 0. , 0. , 0. ],
+         [0. , 0. , 0. , 0. , 0. ]],
+
+        [[7. , 7.2, 7.4, 7.6, 7.8],
+         [0. , 0. , 0. , 0. , 0. ],
+         [0. , 0. , 0. , 0. , 0. ]]],
+
+
+       [[[0. , 0. , 0. , 0. , 0. ],
+         [0. , 0. , 0. , 0. , 0. ],
+         [0. , 0. , 0. , 0. , 0. ]],
+
+        [[0. , 0. , 0. , 0. , 0. ],
+         [0. , 0. , 0. , 0. , 0. ],
+         [0. , 0. , 0. , 0. , 0. ]]]]
+
+  """
+
   sequences = nested.map( #Apply a function to every element in a nested structure
       lambda lhs, rhs: tf.concat([lhs[None], rhs], 0),
       first_output, other_outputs) #11x5x10x30??? where 5 is batch, 1
+
+  """
+  Sequences now pastes the "full seq" (unpadded) entry to the front of each entry
+  <tf.Tensor: id=525, shape=(4, 2, 3, 5), dtype=int32, numpy=
+array([[[[1. , 1.2, 1.4, 1.6, 1.8],
+         [2. , 2.2, 2.4, 2.6, 2.8],
+         [3. , 3.2, 3.4, 3.6, 3.8]],
+
+        [[5. , 5.2, 5.4, 5.6, 5.8],
+         [6. , 6.2, 6.4, 6.6, 6.8],
+         [7. , 7.2, 7.4, 7.6, 7.8]]],
+
+
+       [[[2. , 2.2, 2.4, 2.6, 2.8],
+         [3. , 3.2, 3.4, 3.6, 3.8],
+         [0. , 0. , 0. , 0. , 0. ]],
+
+        [[6. , 6.2, 6.4, 6.6, 6.8],
+         [7. , 7.2, 7.4, 7.6, 7.8],
+         [0. , 0. , 0. , 0. , 0. ]]],
+
+
+       [[[3. , 3.2, 3.4, 3.6, 3.8],
+         [0. , 0. , 0. , 0. , 0. ],
+         [0. , 0. , 0. , 0. , 0. ]],
+
+        [[7. , 7.2, 7.4, 7.6, 7.8],
+         [0. , 0. , 0. , 0. , 0. ],
+         [0. , 0. , 0. , 0. , 0. ]]],
+
+
+       [[[0. , 0. , 0. , 0. , 0. ],
+         [0. , 0. , 0. , 0. , 0. ],
+         [0. , 0. , 0. , 0. , 0. ]],
+
+        [[0. , 0. , 0. , 0. , 0. ],
+         [0. , 0. , 0. , 0. , 0. ],
+         [0. , 0. , 0. , 0. , 0. ]]]]
+  """
 
   # Merge batch and time dimensions of steps to compute unrolls from every
   # time step as one batch. The time dimension becomes the number of
@@ -119,6 +205,40 @@ def overshooting(
           tensor, [1, 0] + list(range(2, tensor.shape.ndims))),
       sequences) #swap dims 0 and 1
   merged_length = tf.reduce_sum(sequences['mask'], 1)
+
+  """
+  <tf.Tensor: id=390, shape=(6, 4, 5), dtype=float32, numpy=
+array([[[1. , 1.2, 1.4, 1.6, 1.8],
+        [2. , 2.2, 2.4, 2.6, 2.8],
+        [3. , 3.2, 3.4, 3.6, 3.8],
+        [0. , 0. , 0. , 0. , 0. ]],
+
+       [[2. , 2.2, 2.4, 2.6, 2.8],
+        [3. , 3.2, 3.4, 3.6, 3.8],
+        [0. , 0. , 0. , 0. , 0. ],
+        [0. , 0. , 0. , 0. , 0. ]],
+
+       [[3. , 3.2, 3.4, 3.6, 3.8],
+        [0. , 0. , 0. , 0. , 0. ],
+        [0. , 0. , 0. , 0. , 0. ],
+        [0. , 0. , 0. , 0. , 0. ]],
+
+       [[5. , 5.2, 5.4, 5.6, 5.8],
+        [6. , 6.2, 6.4, 6.6, 6.8],
+        [7. , 7.2, 7.4, 7.6, 7.8],
+        [0. , 0. , 0. , 0. , 0. ]],
+
+       [[6. , 6.2, 6.4, 6.6, 6.8],
+        [7. , 7.2, 7.4, 7.6, 7.8],
+        [0. , 0. , 0. , 0. , 0. ],
+        [0. , 0. , 0. , 0. , 0. ]],
+
+       [[7. , 7.2, 7.4, 7.6, 7.8],
+        [0. , 0. , 0. , 0. , 0. ],
+        [0. , 0. , 0. , 0. , 0. ],
+        [0. , 0. , 0. , 0. , 0. ]]]
+  """
+
 
   # Mask out padding frames; unnecessary if the input is already masked.
   sequences = nested.map(
@@ -133,13 +253,14 @@ def overshooting(
       lambda tensor: tf.concat([0 * tensor[:, :1], tensor[:, :-1]], 1),
       posterior)
   prev_state = nested.map(
-      lambda tensor: _merge_dims(tensor, [0, 1]), prev_state)
+      lambda tensor: _merge_dims(tensor, [0, 1]), prev_state) #reshaped posteriors - RNN starting point for open loop rollouts
   (priors, _), _ = tf.nn.dynamic_rnn(
-      cell, (sequences['observ'], sequences['prev_action'], use_obs),
-      merged_length,
-      prev_state) #returns pair: outputs=(priors, posteriors), state
+      cell=cell, inputs=(sequences['observ'], sequences['prev_action'], use_obs),
+      sequence_length=merged_length,
+      initial_state=prev_state) #returns pair: outputs=(priors, posteriors), state
       # recall: RSSM inputs: (prev_state, prev_action, zero_obs)
       # now all elements of 'priors' in 50x11xd shape
+      #use_obs=0 -> use prior, not posterior
 
   # Restore batch dimension.
   target, prior, posterior, mask = nested.map(

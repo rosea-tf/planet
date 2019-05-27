@@ -44,6 +44,27 @@ class RSSM(base.Base): #inherits from RNN cell
                  (o)
   """ # is this diagram what "temporal prior" refers to?
 
+  """
+  
+  tf.RNN cells (such as this one) must implement:
+    (output, next_state) = call(input, state)
+
+  RSSM inherits from base:
+    def call(self, inputs, prev_state):
+    ...    
+    prior = self._transition_tpl(prev_state, prev_action, zero_obs)
+    ...
+    posterior = tf.cond(
+        use_obs,
+        lambda: self._posterior(prev_state, prev_action, obs),
+        lambda: prior)
+    return (prior, posterior), posterior
+
+    so  output = (pri, post) (prior used for lat. overshooting)
+        next_state = post
+  """
+
+
   def __init__(
       self, state_size, belief_size, embed_size,
       future_rnn=False, mean_only=False, min_stddev=1e-5):
