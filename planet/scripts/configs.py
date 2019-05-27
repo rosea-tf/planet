@@ -55,7 +55,8 @@ def debug(config, params):
 
 
 def _data_processing(config, params):
-  config.max_episodes = None
+  # config.max_episodes = None
+  config.max_episodes = 2000
   config.scan_episodes_every = params.get('scan_episodes_every', 10)
   config.data_loader = params.get('data_loader', 'scan')
   config.batch_shape = params.get('batch_shape', (50, 50))
@@ -90,7 +91,6 @@ def _model_components(config, params):
         params.get('min_stddev', 1e-1))
         #ADR NB:
         # state_size, belief_size, embed_size, future_rnn=False, mean_only=False, min_stddev=1e-5
-        # BUG on future_rnn?
   else:
     raise NotImplementedError("Unknown model '{}.".format(params.model))
   return config
