@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+#    http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,17 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import functools
 
 import tensorflow as tf
+import tensorflow_probability as tfp
 
 from planet import tools
-from planet.training import define_summaries
-from planet.training import utility
+from planet.training import define_summaries, utility
+from planet.tools.overshooting import _merge_dims
 
 
 def define_model(data, trainer, config):
@@ -38,54 +37,122 @@ def define_model(data, trainer, config):
     if config.dynamic_action_noise:
       data['action'] += tf.random_normal(
           tf.shape(data['action']), 0.0, config.dynamic_action_noise)
-    prev_action = tf.concat(
-        [0 * data['action'][:, :1], data['action'][:, :-1]], 1)
+    prev_action = tf.concat([0 * data['action'][:, :1], data['action'][:, :-1]],
+                            1)
     obs = data.copy()
     del obs['length']
 
   # Instantiate network blocks.
-  cell = config.cell() #RSSM
+  cell = config.cell()  #RSSM
   kwargs = dict()
+
+  #ADR
+  kwargs['dumbnet'] = config.dumbnet
+
   encoder = tf.make_template(
       'encoder', config.encoder, create_scope_now_=True, **kwargs)
   heads = {}
   for key, head in config.heads.items():
     name = 'head_{}'.format(key)
     kwargs = dict(data_shape=obs[key].shape[2:].as_list())
+
+    #ADR
+    # if key == 'image':
+    kwargs['dumbnet'] = config.dumbnet
+
     heads[key] = tf.make_template(name, head, create_scope_now_=True, **kwargs)
 
   # Embed observations and unroll model.
-  embedded = encoder(obs) #[5x10x1024] <- [..., 5x10x64x64x3, ..., ... (other elements in obs: ignored)]
-  # so the "encoder" here is NOT the q(s|o) encoder in the paper??
-  # the function is seemingly found at networks.conv_ha:
-  #   "Extract deterministic features from an observation"
-  #   Q: does it get trained? it doesn't have trainable=False, so...
+  #[5x10x1024] <- [..., 5x10x64x64x3, ..., ... (other elements in obs: ignored)]
+  embedded = encoder(obs)  
 
   # Separate overshooting and zero step observations because computing
   # overshooting targets for images would be expensive.
-  zero_step_obs = {} # both of these are 5x10xd
-  overshooting_obs = {} 
+  zero_step_obs = {}  # both of these are 5x10xd
+  overshooting_obs = {}
   for key, value in obs.items():
     if config.zero_step_losses.get(key):
       zero_step_obs[key] = value
     if config.overshooting_losses.get(key):
-      overshooting_obs[key] = value #for now, they're identical
+      overshooting_obs[key] = value  #for now, they're identical
   assert config.overshooting <= config.batch_shape[1]
   target, prior, posterior, mask = tools.overshooting(
       cell, overshooting_obs, embedded, prev_action, data['length'],
-      config.overshooting + 1) #aha: 10 (= 9 + 1) is the overshooting length! ... but we're already feeding in 5x10 tensors. so seq is length 10 then predict 10 out from each step of that seq. #prior is result ofunrolling. posterior is what the unroll starts from.
+      config.overshooting + 1
+  )  
+  #prior is result of unrolling. posterior is what the unroll starts from.
+
+  # cut out overshooting: we want only posteriors from images
+  qf_correl_data = {
+      'sample': posterior['sample'][:, :, 0, :],
+      'belief': posterior['belief'][:, :, 0, :],
+      'position': data['position'],
+      'velocity': data['velocity']
+  }
+
+  # combine batch and sequence axes of all tensors
+  qf_correl_data = tools.nested.map(lambda tensor: _merge_dims(tensor, [0, 1]),
+                                    qf_correl_data)
+
+  qf_correl_means = {
+      n: tf.reduce_mean(t, axis=0, name='qf_correl_mean_{}'.format(n))
+      for n, t in qf_correl_data.items()
+  }
+
+  qf_correl_variances = {
+      n:
+      tfp.stats.variance(t, sample_axis=0, name='qf_correl_vari_{}'.format(n))
+      for n, t in qf_correl_data.items()
+  }
+
+  # calc cov: each of the 4 combinations
+  qf_correl_covs = {}
+  for nx in ['position', 'velocity']:
+    tx = qf_correl_data[nx]
+    for ny in ['sample', 'belief']:
+      ty = qf_correl_data[ny]
+      nxy = '{}{}'.format(nx[0], ny[0])
+
+      # pad tensor x to the dim of y
+      tx_pad = tf.concat(
+          values=[tx, tf.zeros((tx.shape[0], ty.shape[1] - tx.shape[1]))],
+          axis=1)
+
+      qf_correl_covs[nxy] = tfp.stats.covariance(
+          x=tx_pad,
+          y=ty,
+          sample_axis=0,
+          event_axis=-1,
+      )
+
+      # cut cov matrix back to [x, y]
+      qf_correl_covs[nxy] = tf.slice(
+          qf_correl_covs[nxy],
+          begin=[0, 0],
+          size=[tx.shape[1], ty.shape[1]],
+          name='qf_correl_cov_{}'.format(nxy))
+
+      # do PCA on y down to dim of x
+      # TODO - but, we should only do this once!!
+      # maybe, better to just concatenate x, y
+
+      # and, TODO, should try PCA two ways:
+      # [b]->[p,v]; [s]->[p,v]; [b,s]->[p,v]
+
   losses = []
 
   # Zero step losses. Reconstruction??
-  
   # :1 = only first prediction. result=[5x10x1x30]: a horizontal row in fig3c
   _, zs_prior, zs_posterior, zs_mask = tools.nested.map(
       lambda tensor: tensor[:, :, :1], (target, prior, posterior, mask))
-  zs_target = {key: value[:, :, None] for key, value in zero_step_obs.items()} #images, rewards # add an extra dimension at the end. #TODO? confirm what these are
+  zs_target = {
+      key: value[:, :, None] for key, value in zero_step_obs.items()
+  }  
+  
   zero_step_losses = utility.compute_losses(
       loss_scales=config.zero_step_losses, 
       cell=cell, 
-      heads=heads, # outputs other than prior, posterior
+      heads=heads,  # outputs other than prior, posterior
       step=step,
       target=zs_target,
       prior=zs_prior,
@@ -94,8 +161,9 @@ def define_model(data, trainer, config):
       free_nats=config.free_nats,
       debug=config.debug)
   losses += [
-      loss * config.zero_step_losses[name] for name, loss in
-      zero_step_losses.items()] #scale gets applied here
+      loss * config.zero_step_losses[name]
+      for name, loss in zero_step_losses.items()
+  ]  #scale gets applied here
   if 'divergence' not in zero_step_losses:
     zero_step_losses['divergence'] = tf.zeros((), dtype=tf.float32)
 
@@ -103,23 +171,24 @@ def define_model(data, trainer, config):
   if config.overshooting > 1:
     os_target, os_prior, os_posterior, os_mask = tools.nested.map(
         lambda tensor: tensor[:, :, 1:-1], (target, prior, posterior, mask))
-        # everything AFTER step 0 in prediction/11 dim
+    # everything AFTER step 0 in prediction/11 dim
     if config.stop_os_posterior_gradient:
       os_posterior = tools.nested.map(tf.stop_gradient, os_posterior)
     overshooting_losses = utility.compute_losses(
-      config.overshooting_losses, #doesn't include image
-      cell, 
-      heads, 
-      step, 
-      os_target, 
-      os_prior,
-      os_posterior, 
-      os_mask, 
-      config.free_nats, 
-      debug=config.debug)
+        config.overshooting_losses,  #doesn't include image
+        cell,
+        heads,
+        step,
+        os_target,
+        os_prior,
+        os_posterior,
+        os_mask,
+        config.free_nats,
+        debug=config.debug)
     losses += [
-        loss * config.overshooting_losses[name] for name, loss in
-        overshooting_losses.items()]
+        loss * config.overshooting_losses[name]
+        for name, loss in overshooting_losses.items()
+    ]
   else:
     overshooting_losses = {}
   if 'divergence' not in overshooting_losses:
@@ -128,16 +197,15 @@ def define_model(data, trainer, config):
   # Workaround for TensorFlow deadlock bug.
   loss = sum(losses)
   train_loss = tf.cond(
-      tf.equal(phase, 'train'),
-      lambda: loss,
-      lambda: 0 * tf.get_variable('dummy_loss', (), tf.float32))
-  train_summary = utility.apply_optimizers(
-      train_loss, step, should_summarize, config.optimizers)
+      tf.equal(phase, 'train'), lambda: loss, lambda: 0 * tf.get_variable(
+          'dummy_loss', (), tf.float32))
+  train_summary = utility.apply_optimizers(train_loss, step, should_summarize,
+                                           config.optimizers)
   # train_summary = tf.cond(
-  #     tf.equal(phase, 'train'),
-  #     lambda: utility.apply_optimizers(
-  #         loss, step, should_summarize, config.optimizers),
-  #     str, name='optimizers')
+  #   tf.equal(phase, 'train'),
+  #   lambda: utility.apply_optimizers(
+  #     loss, step, should_summarize, config.optimizers),
+  #   str, name='optimizers')
 
   # Active data collection.
   collect_summaries = []
@@ -152,8 +220,12 @@ def define_model(data, trainer, config):
       collect_summary, _ = tf.cond(
           should_collect,
           functools.partial(
-              utility.simulate_episodes, config, params, graph,
-              expensive_summaries=False, name=name),
+              utility.simulate_episodes,
+              config,
+              params,
+              graph,
+              expensive_summaries=False,
+              name=name),
           lambda: (tf.constant(''), tf.constant(0.0)),
           name='should_collect_' + params.task.name)
       should_collects.append(should_collect)
@@ -168,17 +240,26 @@ def define_model(data, trainer, config):
         lambda: (tf.constant(''), tf.zeros((0,), tf.float32)),
         name='summaries')
   with tf.device('/cpu:0'):
-    summaries = tf.summary.merge(
-        [summaries, train_summary] + collect_summaries)
-    zs_entropy = (tf.reduce_sum(tools.mask(
-        cell.dist_from_state(zs_posterior, zs_mask).entropy(), zs_mask)) /
-        tf.reduce_sum(tf.to_float(zs_mask)))
-    dependencies.append(utility.print_metrics((
-        ('score', score),
-        ('loss', loss),
-        ('zs_entropy', zs_entropy),
-        ('zs_divergence', zero_step_losses['divergence']),
-    ), step, config.mean_metrics_every))
+    summaries = tf.summary.merge([summaries, train_summary] + collect_summaries)
+    zs_entropy = (
+        tf.reduce_sum(
+            tools.mask(
+                cell.dist_from_state(zs_posterior, zs_mask).entropy(), zs_mask))
+        / tf.reduce_sum(tf.to_float(zs_mask)))
+    dependencies.append(
+        utility.print_metrics((
+            ('score', score),
+            ('loss', loss),
+            ('zs_entropy', zs_entropy),
+            ('zs_divergence', zero_step_losses['divergence']),
+        ), step, config.mean_metrics_every))
   with tf.control_dependencies(dependencies):
     score = tf.identity(score)
-  return score, summaries
+
+  extra_tensors = {
+      'corr_means': qf_correl_means,
+      'corr_vars': qf_correl_variances,
+      'corr_covs': qf_correl_covs
+  }
+  # return score, summaries
+  return score, summaries, extra_tensors

@@ -23,14 +23,23 @@ from tensorflow_probability import distributions as tfd
 from planet import tools
 
 
-def encoder(obs):
+def encoder(obs, dumbnet=False):
   """Extract deterministic features from an observation."""
-  kwargs = dict(strides=2, activation=tf.nn.relu)
-  hidden = tf.reshape(obs['image'], [-1] + obs['image'].shape[2:].as_list())
-  hidden = tf.layers.conv2d(hidden, 32, 4, **kwargs)
-  hidden = tf.layers.conv2d(hidden, 64, 4, **kwargs)
-  hidden = tf.layers.conv2d(hidden, 128, 4, **kwargs)
-  hidden = tf.layers.conv2d(hidden, 256, 4, **kwargs)
+  if not dumbnet:
+    kwargs = dict(strides=2, activation=tf.nn.relu)
+  else:
+    #do a one-step convolution
+    kwargs = dict(strides=32, activation=tf.nn.relu)
+
+  hidden = tf.reshape(obs['image'], [-1] + obs['image'].shape[2:].as_list()) #64x64
+
+  if not dumbnet:
+    hidden = tf.layers.conv2d(hidden, 32, 4, **kwargs) #31x31  
+    hidden = tf.layers.conv2d(hidden, 64, 4, **kwargs) #14x14
+    hidden = tf.layers.conv2d(hidden, 128, 4, **kwargs) #6x6
+  
+  hidden = tf.layers.conv2d(hidden, 256, 4, **kwargs) #2x2
+  
   hidden = tf.layers.flatten(hidden)
   assert hidden.shape[1:].as_list() == [1024], hidden.shape.as_list()
   hidden = tf.reshape(hidden, tools.shape(obs['image'])[:2] + [
@@ -38,15 +47,24 @@ def encoder(obs):
   return hidden
 
 
-def decoder(state, data_shape):
+def decoder(state, data_shape, dumbnet=False):
   """Compute the data distribution of an observation from its state."""
   kwargs = dict(strides=2, activation=tf.nn.relu)
   hidden = tf.layers.dense(state, 1024, None)
   hidden = tf.reshape(hidden, [-1, 1, 1, hidden.shape[-1].value])
-  hidden = tf.layers.conv2d_transpose(hidden, 128, 5, **kwargs)
-  hidden = tf.layers.conv2d_transpose(hidden, 64, 5, **kwargs)
-  hidden = tf.layers.conv2d_transpose(hidden, 32, 6, **kwargs)
-  hidden = tf.layers.conv2d_transpose(hidden, 3, 6, strides=2)
+  
+  if not dumbnet:
+    hidden = tf.layers.conv2d_transpose(hidden, 128, 5, **kwargs)
+    hidden = tf.layers.conv2d_transpose(hidden, 64, 5, **kwargs)
+    hidden = tf.layers.conv2d_transpose(hidden, 32, 6, **kwargs)
+    hidden = tf.layers.conv2d_transpose(hidden, 3, 6, strides=2)
+      
+  else:
+    hidden = tf.layers.conv2d_transpose(hidden, 2, 5, **kwargs)
+    hidden = tf.layers.conv2d_transpose(hidden, 2, 5, **kwargs)
+    hidden = tf.layers.conv2d_transpose(hidden, 2, 6, **kwargs)
+    hidden = tf.layers.conv2d_transpose(hidden, 3, 6, strides=2)
+
   mean = hidden
   assert mean.shape[1:].as_list() == [64, 64, 3], mean.shape
   mean = tf.reshape(mean, tools.shape(state)[:-1] + data_shape)

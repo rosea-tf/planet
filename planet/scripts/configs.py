@@ -37,6 +37,9 @@ def default(config, params):
   config = _tasks(config, params)
   config = _loss_functions(config, params)
   config = _training_schedule(config, params)
+
+  #ADR
+  config.dumbnet = params.get('dumbnet', False)
   return config
 
 
@@ -117,9 +120,8 @@ def _tasks(config, params):
           task.name, env_ctor, task.max_length, ['reward'])
   for name in tasks[0].state_components:
     # this is where position and velocity come in
-    if name not in ['position', 'velocity']:
-      config.heads[name] = networks.feed_forward
-      config.zero_step_losses[name] = 1.0
+    config.heads[name] = networks.feed_forward
+    config.zero_step_losses[name] = 1.0
   config.tasks = tasks
   return config
 

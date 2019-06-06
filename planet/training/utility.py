@@ -158,7 +158,8 @@ def train(model_fn, datasets, logdir, config):
   trainer = trainer_.Trainer(logdir, config=config)
   with tf.variable_scope('graph', use_resource=True):
     data = get_batch(datasets, trainer.phase, trainer.reset)
-    score, summary = model_fn(data, trainer, config) # tf graph set up here. model_fn=define_model()
+    # score, summary = model_fn(data, trainer, config) # tf graph set up here. model_fn=define_model()
+    score, summary, extra_tensors = model_fn(data, trainer, config) # tf graph set up here. model_fn=define_model()
     message = 'Graph contains {} trainable variables.'
     tf.logging.info(message.format(tools.count_weights()))
     if config.train_steps:
@@ -177,7 +178,7 @@ def train(model_fn, datasets, logdir, config):
           checkpoint_every=config.test_checkpoint_every)
   for saver in config.savers:
     trainer.add_saver(**saver)
-  for score in trainer.iterate(config.max_steps):
+  for score in trainer.iterate(config.max_steps, extras=extra_tensors):
     yield score
 
 

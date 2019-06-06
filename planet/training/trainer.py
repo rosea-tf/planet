@@ -21,7 +21,7 @@ import os
 import re
 
 import tensorflow as tf
-
+import numpy as np #ADR
 from planet import tools
 
 
@@ -160,7 +160,8 @@ class Trainer(object):
     for _ in self.iterate(max_step, sess):
       pass
 
-  def iterate(self, max_step=None, sess=None):
+  # def iterate(self, max_step=None, sess=None):
+  def iterate(self, max_step=None, sess=None, extras=None):
     """Run the schedule for a specified number of steps and yield scores.
 
     Call the operation of the current phase until the global step reaches the
@@ -175,6 +176,11 @@ class Trainer(object):
       Reported mean scores.
     """
     sess = sess or self._create_session()
+
+
+    #ADR
+    extras_storage = []
+
     with sess:
       self._initialize_variables(
           sess, self._loaders, self._logdirs, self._checkpoints)
@@ -190,6 +196,8 @@ class Trainer(object):
           message += 'Epoch {} phase {} (phase step {}, global step {}).'
           tf.logging.info(message.format(
               epoch + 1, phase.name, phase_step, global_step))
+
+
         # Populate book keeping tensors.
         phase.feed[self._step] = phase_step
         phase.feed[self._phase] = phase.name
@@ -199,6 +207,14 @@ class Trainer(object):
         phase.feed[self._report] = self._is_every_steps(
             phase_step, phase.batch_size, phase.report_every)
         summary, mean_score, global_step = sess.run(phase.op, phase.feed)
+
+        #ADR
+        extras_storage.append(sess.run(extras, phase.feed))
+
+        if self._is_every_steps(phase_step, phase.batch_size, phase.log_every):
+          print ('saving extras_{}_{}.npy'.format(global_step - phase.log_every + 1, global_step))
+          np.save(os.path.join(self._logdir, 'extras_{}_{}.npy'.format(global_step - phase.log_every + 1, global_step)), extras_storage)
+
         if self._is_every_steps(
             phase_step, phase.batch_size, phase.checkpoint_every):
           for saver in self._savers:
