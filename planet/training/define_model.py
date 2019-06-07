@@ -94,51 +94,6 @@ def define_model(data, trainer, config):
   qf_correl_data = tools.nested.map(lambda tensor: _merge_dims(tensor, [0, 1]),
                                     qf_correl_data)
 
-  qf_correl_means = {
-      n: tf.reduce_mean(t, axis=0, name='qf_correl_mean_{}'.format(n))
-      for n, t in qf_correl_data.items()
-  }
-
-  qf_correl_variances = {
-      n:
-      tfp.stats.variance(t, sample_axis=0, name='qf_correl_vari_{}'.format(n))
-      for n, t in qf_correl_data.items()
-  }
-
-  # calc cov: each of the 4 combinations
-  qf_correl_covs = {}
-  for nx in ['position', 'velocity']:
-    tx = qf_correl_data[nx]
-    for ny in ['sample', 'belief']:
-      ty = qf_correl_data[ny]
-      nxy = '{}{}'.format(nx[0], ny[0])
-
-      # pad tensor x to the dim of y
-      tx_pad = tf.concat(
-          values=[tx, tf.zeros((tx.shape[0], ty.shape[1] - tx.shape[1]))],
-          axis=1)
-
-      qf_correl_covs[nxy] = tfp.stats.covariance(
-          x=tx_pad,
-          y=ty,
-          sample_axis=0,
-          event_axis=-1,
-      )
-
-      # cut cov matrix back to [x, y]
-      qf_correl_covs[nxy] = tf.slice(
-          qf_correl_covs[nxy],
-          begin=[0, 0],
-          size=[tx.shape[1], ty.shape[1]],
-          name='qf_correl_cov_{}'.format(nxy))
-
-      # do PCA on y down to dim of x
-      # TODO - but, we should only do this once!!
-      # maybe, better to just concatenate x, y
-
-      # and, TODO, should try PCA two ways:
-      # [b]->[p,v]; [s]->[p,v]; [b,s]->[p,v]
-
   losses = []
 
   # Zero step losses. Reconstruction??
@@ -256,10 +211,13 @@ def define_model(data, trainer, config):
   with tf.control_dependencies(dependencies):
     score = tf.identity(score)
 
-  extra_tensors = {
-      'corr_means': qf_correl_means,
-      'corr_vars': qf_correl_variances,
-      'corr_covs': qf_correl_covs
-  }
+  # extra_tensors = {
+  #     'corr_means': qf_correl_means,
+  #     'corr_vars': qf_correl_variances,
+  #     'corr_covs': qf_correl_covs
+  # }
+
+  extra_tensors = qf_correl_data
+
   # return score, summaries
   return score, summaries, extra_tensors
