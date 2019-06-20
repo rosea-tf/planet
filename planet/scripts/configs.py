@@ -152,7 +152,7 @@ def _training_schedule(config, params):
   config.test_checkpoint_every = int(
       params.get('checkpoint_every', config.test_steps))
   config.savers = [tools.AttrDict(exclude=(r'.*_temporary.*',))]
-  config.mean_metrics_every = config.train_steps // 10
+  config.mean_metrics_every = config.train_steps // 10 or 1
   config.train_dir = os.path.join(params.logdir, 'train_episodes')
   config.test_dir = os.path.join(params.logdir, 'test_episodes')
   config.random_collects = _initial_collection(config, params)
