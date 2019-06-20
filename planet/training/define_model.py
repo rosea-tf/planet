@@ -82,17 +82,20 @@ def define_model(data, trainer, config):
   )  
   #prior is result of unrolling. posterior is what the unroll starts from.
 
-  # cut out overshooting: we want only posteriors from images
-  qf_correl_data = {
-      'sample': posterior['sample'][:, :, 0, :],
-      'belief': posterior['belief'][:, :, 0, :],
-      'position': data['position'],
-      'velocity': data['velocity']
-  }
+  extra_tensors = None
 
-  # combine batch and sequence axes of all tensors
-  qf_correl_data = tools.nested.map(lambda tensor: _merge_dims(tensor, [0, 1]),
-                                    qf_correl_data)
+  if config.collect_latents:
+  # cut out overshooting: we want only posteriors from images
+    extra_tensors = {
+        'sample': posterior['sample'][:, :, 0, :],
+        'belief': posterior['belief'][:, :, 0, :],
+        'position': data['position'],
+        'velocity': data['velocity']
+    }
+
+    # combine batch and sequence axes of all tensors
+    extra_tensors = tools.nested.map(lambda tensor: _merge_dims(tensor, [0, 1]),
+                                      extra_tensors)
 
   losses = []
 
@@ -210,14 +213,6 @@ def define_model(data, trainer, config):
         ), step, config.mean_metrics_every))
   with tf.control_dependencies(dependencies):
     score = tf.identity(score)
-
-  # extra_tensors = {
-  #     'corr_means': qf_correl_means,
-  #     'corr_vars': qf_correl_variances,
-  #     'corr_covs': qf_correl_covs
-  # }
-
-  extra_tensors = qf_correl_data
 
   # return score, summaries
   return score, summaries, extra_tensors

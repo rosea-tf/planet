@@ -209,18 +209,19 @@ class Trainer(object):
         summary, mean_score, global_step = sess.run(phase.op, phase.feed)
 
         #ADR
-        extras_storage.append(sess.run(extras, phase.feed))
+        if extras is not None:
+          extras_storage.append(sess.run(extras, phase.feed))
 
-        if self._is_every_steps(phase_step, phase.batch_size, phase.log_every):
-          print ('saving extras_{}_{}.npy'.format(global_step - phase.log_every + 1, global_step))
+          if self._is_every_steps(phase_step, phase.batch_size, phase.log_every):
+            print ('saving extras_{}_{}.npy'.format(global_step - phase.log_every + 1, global_step))
 
-          # rearrange the sequence of dictionaries into a dictionary of catted sequences
-          extras_t = {k: np.concatenate([d[k] for d in extras_storage], axis=0) for k in extras_storage[0].keys()}
+            # rearrange the sequence of dictionaries into a dictionary of catted sequences
+            extras_t = {k: np.concatenate([d[k] for d in extras_storage], axis=0) for k in extras_storage[0].keys()}
 
-          np.save(os.path.join(self._logdir, 'extras_{}_{}.npy'.format(global_step - phase.log_every + 1, global_step)), extras_t)
+            np.save(os.path.join(self._logdir, 'extras_{}_{}.npy'.format(global_step - phase.log_every + 1, global_step)), extras_t)
 
-          extras_storage = []
-          del extras_t
+            extras_storage = []
+            del extras_t
           
 
         if self._is_every_steps(

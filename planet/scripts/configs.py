@@ -40,6 +40,7 @@ def default(config, params):
 
   #ADR
   config.dumbnet = params.get('dumbnet', False)
+  config.collect_latents = params.get('collect_latents', False)
   return config
 
 
@@ -119,7 +120,7 @@ def _tasks(config, params):
       tasks[index] = tasks_lib.Task(
           task.name, env_ctor, task.max_length, ['reward'])
   for name in tasks[0].state_components:
-    # this is where position and velocity come in
+    # this is where position and velocity come in - formerly, we excised them
     config.heads[name] = networks.feed_forward
     config.zero_step_losses[name] = 1.0
   config.tasks = tasks
