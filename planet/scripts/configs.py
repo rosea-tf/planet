@@ -40,6 +40,8 @@ def default(config, params):
   #ADR
   config.dumbnet = params.get('dumbnet', False)
   config.collect_latents = params.get('collect_latents', False)
+  config.diff_frame = params.get('diff_frame', False)
+
   return config
 
 

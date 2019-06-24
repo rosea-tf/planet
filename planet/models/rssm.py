@@ -68,19 +68,11 @@ class RSSM(base.Base): #inherits from RNN cell
   def __init__(
       self, state_size, belief_size, embed_size,
       future_mix=False, mean_only=False, min_stddev=0.1):
-<<<<<<< HEAD
     self._state_size = state_size # dim of latent state?: 30
     self._belief_size = belief_size # h: both these come from model_size->size in configs.py: 200
     self._embed_size = embed_size
     self._future_mix = future_mix
     self._cell = tf.contrib.rnn.GRUBlockCell(self._belief_size) #num_units (i.e. output size)=200
-=======
-    self._state_size = state_size
-    self._belief_size = belief_size
-    self._embed_size = embed_size
-    self._future_mix = future_mix
-    self._cell = tf.contrib.rnn.GRUBlockCell(self._belief_size)
->>>>>>> upstream/master
     self._kwargs = dict(units=self._embed_size, activation=tf.nn.relu)
     self._mean_only = mean_only
     self._min_stddev = min_stddev
@@ -124,11 +116,8 @@ class RSSM(base.Base): #inherits from RNN cell
     inputs = tf.concat([prev_state['sample'], prev_action], -1)
     hidden = tf.layers.dense(inputs, **self._kwargs)
     belief, rnn_state = self._cell(hidden, prev_state['rnn_state'])
-<<<<<<< HEAD
     # returns output, hidden_state. Per GRU diagram and TF source code, these are actually the same! bx200
 
-=======
->>>>>>> upstream/master
     if self._future_mix:
       hidden = belief
     

@@ -46,8 +46,9 @@ def define_model(data, trainer, config):
   cell = config.cell()  #RSSM
   kwargs = dict()
 
-  #ADR
+  #ADR - arguments for encoder
   kwargs['dumbnet'] = config.dumbnet
+  kwargs['diff_frame'] = config.diff_frame
 
   encoder = tf.make_template(
       'encoder', config.encoder, create_scope_now_=True, **kwargs)
@@ -65,6 +66,14 @@ def define_model(data, trainer, config):
   # Embed observations and unroll model.
   #[5x10x1024] <- [..., 5x10x64x64x3, ..., ... (other elements in obs: ignored)]
   embedded = encoder(obs)  
+
+  # if config.diff_frame:
+    # delete first element of all tensor sequences
+    # we do this after the encoder has used it
+    # data = tools.nested.map(lambda tensor: tensor[:, 1:, ...] if len(tensor.shape) > 1 else tensor, data)
+    # obs = tools.nested.map(lambda tensor: tensor[:, 1:, ...] if len(tensor.shape) > 1 else tensor, obs)
+    # prev_action = prev_action[:, 1:, ...]
+    
 
   # Separate overshooting and zero step observations because computing
   # overshooting targets for images would be expensive.
