@@ -59,8 +59,6 @@ from planet import tools
 from planet import training
 from planet.scripts import configs
 
-import tensorflow.python.util.deprecation as deprecation
-deprecation._PRINT_DEPRECATION_WARNINGS = False
 
 def process(logdir, args):
   with args.params.unlocked:
