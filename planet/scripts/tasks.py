@@ -116,6 +116,16 @@ def gym_racecar(config, params):
   return Task('gym_racing', env_ctor, max_length, state_components)
 
 
+def gym_breakout(config, params):
+  action_repeat = params.get('action_repeat', 2) #?
+  max_length = 1000 // action_repeat #?
+  state_components = ['reward']
+  env_ctor = functools.partial(
+      _gym_env, action_repeat, config.batch_shape[1], max_length,
+      'Breakout-v0', obs_is_image=True)
+  return Task('gym_breakout', env_ctor, max_length, state_components)
+
+
 def _dm_control_env(action_repeat, max_length, domain, task):
   from dm_control import suite
   env = control.wrappers.DeepMindWrapper(suite.load(domain, task), (64, 64))
@@ -130,7 +140,16 @@ def _gym_env(action_repeat, min_length, max_length, name, obs_is_image=False):
   import gym
   env = gym.make(name)
   env = control.wrappers.ActionRepeat(env, action_repeat)
-  env = control.wrappers.NormalizeActions(env)
+  
+  ### ADR: additions to cope with discrete action spaces
+  if isinstance(env.action_space, gym.spaces.Box):
+    env = control.wrappers.NormalizeActions(env)
+  elif isinstance(env.action_space, gym.spaces.Discrete):
+    env = control.wrappers.ContinualizeActions(env) # new thing
+  else:
+    raise NotImplementedError("Unsupported action space '{}.'".format(env.action_space))
+  ### end additions
+
   env = control.wrappers.MinimumDuration(env, min_length)
   env = control.wrappers.MaximumDuration(env, max_length)
   if obs_is_image:
