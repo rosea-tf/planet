@@ -99,14 +99,6 @@ class ConcatObservation(object):
     return np.concatenate([obs[key] for key in self._keys], 0)
 
 
-class FloatActions(object):
-  def __init__(self, env):
-    self._env = env
-
-  @property
-  def action_space(self):
-    return self._env.action_space
-
 class SelectObservations(object):
 
   def __init__(self, env, keys):
@@ -278,11 +270,12 @@ class NormalizeActions(object):
 class ContinualizeActions(object):
   """ADR: a new thing to cope with discrete action spaces using softmax action selection"""
 
-  def __init__(self, env):
+  def __init__(self, env, softmax=False):
     self._env = env
     self._enabled = np.ones(env.action_space.n)
     self._low = -np.ones(env.action_space.n)
     self._high = np.ones(env.action_space.n)
+    self._softmax = softmax
 
   def __getattr__(self, name):
     return getattr(self._env, name)
@@ -292,12 +285,13 @@ class ContinualizeActions(object):
     return gym.spaces.Box(self._low, self._high, dtype=np.float32)
 
   def step(self, action):
-    #TODO: NP or TF?
-    # x = np.divide(x, temperature)
-    e_action = np.exp(action - np.max(action))
-    action_probs = e_action / e_action.sum()
-    action_choice = np.random.choice(
-        np.arange(len(action_probs)), p=action_probs)
+    if not self._softmax:
+      action_choice = np.argmax(action)
+    else:
+      e_action = np.exp(action - np.max(action))
+      action_probs = e_action / e_action.sum()
+      action_choice = np.random.choice(
+          np.arange(len(action_probs)), p=action_probs)
     return self._env.step(action_choice)
 
 
