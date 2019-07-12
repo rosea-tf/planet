@@ -74,8 +74,5 @@ def cross_entropy_method(
   mean, stddev = tf.scan(
       iteration, tf.range(iterations), (mean, stddev), back_prop=False)
   mean, stddev = mean[-1], stddev[-1]  # Select belief at last iterations.
-
-  if discrete_action: #ADR
-      mean = tf.contrib.seq2seq.hardmax(mean)
       
   return mean

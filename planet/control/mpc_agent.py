@@ -74,7 +74,16 @@ class MPCAgent(object):
       if self._config.exploration.schedule:
         scale *= self._config.exploration.schedule(self._step)
       action = tfd.Normal(action, scale).sample()
-    action = tf.clip_by_value(action, -1, 1)
+
+    # NOW we hardmax it.
+    # note, self._config is actually an agent_config object, 
+    # not the usual config object that would contain the discrete_action flag
+    # so we do this hacky thing.
+    if not self._config.planner.keywords['discrete_action']:
+      action = tf.clip_by_value(action, -1, 1)
+    else:
+      action = tf.contrib.seq2seq.hardmax(action)
+
     remember_action = self._prev_action.assign(action)
     remember_state = nested.map(
         lambda var, val: tf.scatter_update(var, agent_indices, val),
