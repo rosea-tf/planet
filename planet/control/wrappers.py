@@ -270,28 +270,49 @@ class NormalizeActions(object):
 class ContinualizeActions(object):
   """ADR: a new thing to cope with discrete action spaces using softmax action selection"""
 
-  def __init__(self, env, softmax=False):
+  def __init__(self, env):
     self._env = env
     self._enabled = np.ones(env.action_space.n)
     self._low = -np.ones(env.action_space.n)
     self._high = np.ones(env.action_space.n)
-    self._softmax = softmax
+    # self._softmax = softmax
 
   def __getattr__(self, name):
     return getattr(self._env, name)
 
   @property
   def action_space(self):
-    return gym.spaces.Box(self._low, self._high, dtype=np.float32)
+    a = gym.spaces.Box(self._low, self._high, dtype=np.float32)
+    
+    def discrete_sample(self):
+      n = self.shape[0]
+      c = np.random.randint(n)
+      o = np.eye(n)[c]
+      return o
+
+    #override sample method of this action space
+    a.sample = discrete_sample.__get__(a, gym.spaces.Box)
+    
+    return a
 
   def step(self, action):
-    if not self._softmax:
-      action_choice = np.argmax(action)
-    else:
-      e_action = np.exp(action - np.max(action))
-      action_probs = e_action / e_action.sum()
-      action_choice = np.random.choice(
-          np.arange(len(action_probs)), p=action_probs)
+    
+    # we should only be receiving actions that are already hardmaxed
+    assert np.min(action) == 0
+    assert np.sum(action) == 1
+
+    action_choice = np.argmax(action)
+    assert action[action_choice] == 1
+
+    # THIS SHOULD NOT HAPPEN
+    # if not self._softmax:
+    #   action_choice = np.argmax(action)
+    # else:
+    #   e_action = np.exp(action - np.max(action))
+    #   action_probs = e_action / e_action.sum()
+    #   action_choice = np.random.choice(
+    #       np.arange(len(action_probs)), p=action_probs)
+
     return self._env.step(action_choice)
 
 

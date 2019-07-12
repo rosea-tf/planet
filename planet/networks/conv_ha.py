@@ -64,7 +64,7 @@ def encoder(obs, dumbnet=False, diff_frame=False):
 
     #flatten
     diff = tf.layers.flatten(diff)
-    assert diff.shape[1:].as_list() == [512], diff.shape.as_list() #TODO
+    assert diff.shape[1:].as_list() == [512], diff.shape.as_list()
 
     #append it to the flattened hidden layer
 

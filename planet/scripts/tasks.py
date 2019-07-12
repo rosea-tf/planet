@@ -117,13 +117,13 @@ def gym_racecar(config, params):
 
 
 def gym_breakout(config, params):
-  action_repeat = params.get('action_repeat', 2) #?
-  softmax = params.get('softmax_discrete', False) #ADR - new thing
+  action_repeat = params.get('action_repeat', 4)
+  # softmax = params.get('softmax_discrete', False) #ADR - new thing
   max_length = 1000 // action_repeat #?
   state_components = ['reward']
   env_ctor = functools.partial(
       _gym_env, action_repeat, config.batch_shape[1], max_length,
-      'Breakout-v0', obs_is_image=True, softmax_discrete=softmax)
+      'Breakout-v0', obs_is_image=True)
   return Task('gym_breakout', env_ctor, max_length, state_components)
 
 
@@ -137,7 +137,7 @@ def _dm_control_env(action_repeat, max_length, domain, task):
   return env
 
 
-def _gym_env(action_repeat, min_length, max_length, name, obs_is_image=False, softmax_discrete=False):
+def _gym_env(action_repeat, min_length, max_length, name, obs_is_image=False):
   import gym
   env = gym.make(name)
   env = control.wrappers.ActionRepeat(env, action_repeat)
@@ -146,7 +146,8 @@ def _gym_env(action_repeat, min_length, max_length, name, obs_is_image=False, so
   if isinstance(env.action_space, gym.spaces.Box):
     env = control.wrappers.NormalizeActions(env)
   elif isinstance(env.action_space, gym.spaces.Discrete):
-    env = control.wrappers.ContinualizeActions(env, softmax_discrete) # new thing
+    env = control.wrappers.ContinualizeActions(env) # ADR new thing
+    # pass
   else:
     raise NotImplementedError("Unsupported action space '{}.'".format(env.action_space))
   ### end additions

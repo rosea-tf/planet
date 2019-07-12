@@ -26,7 +26,8 @@ from planet import tools
 def cross_entropy_method(
     cell, objective_fn, state, obs_shape, action_shape, horizon,
     amount=1000, topk=100, iterations=10, discount=0.99,
-    min_action=-1, max_action=1):
+    min_action=-1, max_action=1,
+    discrete_action=False): #ADR
   obs_shape, action_shape = tuple(obs_shape), tuple(action_shape)
   original_batch = tools.shape(tools.nested.flatten(state)[0])[0]
   initial_state = tools.nested.map(lambda tensor: tf.tile(
@@ -41,7 +42,16 @@ def cross_entropy_method(
     # Sample action proposals from belief.
     normal = tf.random_normal((original_batch, amount, horizon) + action_shape)
     action = normal * stddev[:, None] + mean[:, None]
-    action = tf.clip_by_value(action, min_action, max_action)
+    
+    if not discrete_action:
+        action = tf.clip_by_value(action, min_action, max_action)
+    else:
+        # hardmax along the LAST dimension of tensor.
+        #  this tf.contrib fn seems to do exactly that :)
+        action = tf.contrib.seq2seq.hardmax(action)
+        # pass
+
+
     # Evaluate proposal actions.
     action = tf.reshape(
         action, (extended_batch, horizon) + action_shape)
@@ -64,4 +74,8 @@ def cross_entropy_method(
   mean, stddev = tf.scan(
       iteration, tf.range(iterations), (mean, stddev), back_prop=False)
   mean, stddev = mean[-1], stddev[-1]  # Select belief at last iterations.
+
+  if discrete_action: #ADR
+      mean = tf.contrib.seq2seq.hardmax(mean)
+      
   return mean

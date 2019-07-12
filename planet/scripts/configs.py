@@ -41,6 +41,7 @@ def default(config, params):
   config.dumbnet = params.get('dumbnet', False)
   config.collect_latents = params.get('collect_latents', False)
   config.diff_frame = params.get('diff_frame', False)
+  config.discrete_action = params.get('discrete_action', False)
 
   return config
 
@@ -237,7 +238,8 @@ def _define_simulation(task, config, params, horizon, batch_size):
       amount=params.get('cem_amount', 1000),
       topk=params.get('cem_topk', 100),
       iterations=params.get('cem_iterations', 10),
-      horizon=horizon)
+      horizon=horizon,
+      discrete_action=params.get('discrete_action'))
   return tools.AttrDict(
       task=task,
       num_agents=batch_size,
