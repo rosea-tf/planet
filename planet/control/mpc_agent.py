@@ -64,24 +64,41 @@ class MPCAgent(object):
     with tf.control_dependencies([prev_action]):
       use_obs = tf.ones(tf.shape(agent_indices), tf.bool)[:, None]
       _, state = self._cell((embedded, prev_action, use_obs), state)
+    
+    # note, self._config is actually an agent_config object, 
+    # not the usual config object that would contain the discrete_action flag
+    # so we do this hacky thing.
+    discrete_action = self._config.planner.keywords['discrete_action']
+
+    # get the means (or log probs, in the discrete case)
     action = self._config.planner(
         self._cell, self._config.objective, state,
         embedded.shape[1:].as_list(),
-        prev_action.shape[1:].as_list())
-    action = action[:, 0]
+        prev_action.shape[1:].as_list()) #[o,h,a]
+    
+    # keep only the first action of the n-step sequence: we will replan over again on the next step
+    action = action[:, 0] #[o,a]
+    
+
+
     if self._config.exploration:
       scale = self._config.exploration.scale
       if self._config.exploration.schedule:
         scale *= self._config.exploration.schedule(self._step)
-      action = tfd.Normal(action, scale).sample()
+    
+      if not discrete_action:
+        action = tfd.Normal(action, scale).sample()
+      else:
+        # for each batch item, determine whether we explore (e-greedy strategy)
+        expl_sample = tf.random.uniform(action.shape[0:1])
+        expl_do = tf.math.greater(scale, expl_sample)
+        # action probs get replaced with random probs
+        action = tf.where(expl_do, tf.random.uniform(action.shape), action)
 
-    # NOW we hardmax it.
-    # note, self._config is actually an agent_config object, 
-    # not the usual config object that would contain the discrete_action flag
-    # so we do this hacky thing.
-    if not self._config.planner.keywords['discrete_action']:
+    if not discrete_action:
       action = tf.clip_by_value(action, -1, 1)
     else:
+      # pick highest prob action 
       action = tf.contrib.seq2seq.hardmax(action)
 
     remember_action = self._prev_action.assign(action)

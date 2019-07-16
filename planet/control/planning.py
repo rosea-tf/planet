@@ -32,6 +32,8 @@ def cross_entropy_method(
   original_batch = tools.shape(tools.nested.flatten(state)[0])[0]
   initial_state = tools.nested.map(lambda tensor: tf.tile(
       tensor, [amount] + [1] * (tensor.shape.ndims - 1)), state)
+  
+  # pick up the standard batch size as used in 'sample', 'belief', etc
   extended_batch = tools.shape(tools.nested.flatten(initial_state)[0])[0]
   use_obs = tf.zeros([extended_batch, horizon, 1], tf.bool)
   obs = tf.zeros((extended_batch, horizon) + obs_shape)
@@ -40,17 +42,19 @@ def cross_entropy_method(
   def iteration(mean_and_stddev, _):
     mean, stddev = mean_and_stddev
     # Sample action proposals from belief.
-    normal = tf.random_normal((original_batch, amount, horizon) + action_shape)
-    action = normal * stddev[:, None] + mean[:, None]
     
     if not discrete_action:
+        normal = tf.random_normal((original_batch, amount, horizon) + action_shape)
+        action = normal * stddev[:, None] + mean[:, None] #insert new dim at 2nd pos
         action = tf.clip_by_value(action, min_action, max_action)
     else:
-        # hardmax along the LAST dimension of tensor.
-        #  this tf.contrib fn seems to do exactly that :)
-        action = tf.contrib.seq2seq.hardmax(action)
-        # pass
-
+        # note, action shape should be 1D here!
+        # sample from a categorical dist
+        probs_flat = tf.reshape(mean, [-1, action_shape[0]]) #[oh, a]=probs
+        choice_flat = tf.random.categorical(probs_flat, amount) #[oh, m]=choice
+        action_flat = tf.one_hot(choice_flat, depth=action_shape[0], axis=-1) #[oh, m, a]={0,1}
+        action = tf.reshape(action_flat, [original_batch, horizon, amount, action_shape[0]]) #[o, h, m, a]
+        action = tf.transpose(action, [0, 2, 1, 3]) #[o, m, h, a]
 
     # Evaluate proposal actions.
     action = tf.reshape(
@@ -64,15 +68,31 @@ def cross_entropy_method(
     # Re-fit belief to the best ones.
     _, indices = tf.nn.top_k(return_, topk, sorted=False)
     indices += tf.range(original_batch)[:, None] * amount
-    best_actions = tf.gather(action, indices)
-    mean, variance = tf.nn.moments(best_actions, 1)
-    stddev = tf.sqrt(variance + 1e-6)
+    best_actions = tf.gather(action, indices) #[o,k,h,a]
+    
+    if not discrete_action:
+        mean, variance = tf.nn.moments(best_actions, 1) #[o,h,a]
+        stddev = tf.sqrt(variance + 1e-6)
+    else:
+        # count the number of times each action chosen
+        mean = tf.reduce_mean(best_actions, axis=1) #[o,h,a]
+        mean = tf.math.log(mean + 1e-6)#[o,h,a]
+
+    # mean = tf.Print(mean, [mean[0, 0]], summarize=8, message="Mean: ")
+
     return mean, stddev
 
   mean = tf.zeros((original_batch, horizon) + action_shape)
+  # mean = tf.Print(mean, [mean[0, 0]], summarize=8, message="NEW PLAN: ")
+  # initialise a gaussian with mean zero
+  # in discrete case, these will be logprobs for a gen. bernoulli
+  
+  # this will only have effect in the gaussian/continuous case
   stddev = tf.ones((original_batch, horizon) + action_shape)
+  
   mean, stddev = tf.scan(
-      iteration, tf.range(iterations), (mean, stddev), back_prop=False)
-  mean, stddev = mean[-1], stddev[-1]  # Select belief at last iterations.
+      iteration, tf.range(iterations), (mean, stddev), back_prop=False) #[i,o,h,a]
+  
+  mean, stddev = mean[-1], stddev[-1]  # Select belief at last iterations: [o,h,a]
       
-  return mean
+  return mean 
