@@ -267,13 +267,35 @@ class NormalizeActions(object):
     return self._env.step(action)
 
 
-class ContinualizeActions(object):
-  """ADR: a new thing to cope with discrete action spaces using softmax action selection"""
+class Discretizer(object):
+  """ADR: a new thing to turn continuous action envs into discrete action ones: """
+
+  def __init__(self, env, action_set):
+    self._env = env
+    self._action_set = action_set
+    self._n = len(action_set)
+    
+    self.action_space = gym.spaces.Discrete(self._n)
+
+  def __getattr__(self, name):
+    return getattr(self._env, name)
+
+
+  def step(self, choice):
+    
+    # assert isinstance(choice, int)
+    # assert 0 <= choice < self._n
+
+    return self._env.step(self._action_set[choice])
+
+
+class DiscreteActionWrap(object):
+  """ADR: a new thing to feed discrete action spaces into the standard network"""
 
   def __init__(self, env):
     self._env = env
     self._enabled = np.ones(env.action_space.n)
-    self._low = -np.ones(env.action_space.n)
+    self._low = np.zeros(env.action_space.n)
     self._high = np.ones(env.action_space.n)
     # self._softmax = softmax
 
@@ -285,6 +307,7 @@ class ContinualizeActions(object):
     a = gym.spaces.Box(self._low, self._high, dtype=np.float32)
     
     def discrete_sample(self):
+      """returns a random one hot vector. used for generating test episodes"""
       n = self.shape[0]
       c = np.random.randint(n)
       o = np.eye(n)[c]
@@ -297,23 +320,16 @@ class ContinualizeActions(object):
 
   def step(self, action):
     
-    # we should only be receiving actions that are already hardmaxed
+    # we should only be receiving action vectors that are well behaved pdfs.
     assert np.min(action) == 0
     assert np.sum(action) == 1
 
-    action_choice = np.argmax(action)
-    assert action[action_choice] == 1
+    # choice = np.argmax(action)
+    # assert action[action_choice] == 1
 
-    # THIS SHOULD NOT HAPPEN
-    # if not self._softmax:
-    #   action_choice = np.argmax(action)
-    # else:
-    #   e_action = np.exp(action - np.max(action))
-    #   action_probs = e_action / e_action.sum()
-    #   action_choice = np.random.choice(
-    #       np.arange(len(action_probs)), p=action_probs)
+    choice = np.random.choice(np.arange(len(action), dtype=int), p=action)
 
-    return self._env.step(action_choice)
+    return self._env.step(choice)
 
 
 class DeepMindWrapper(object):

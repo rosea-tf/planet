@@ -40,6 +40,15 @@ def cartpole_balance(config, params):
   return Task('cartpole_balance', env_ctor, max_length, state_components)
 
 
+def cartpole_balance_da(config, params):
+  action_repeat = params.get('action_repeat', 4)
+  max_length = 1000 // action_repeat
+  state_components = ['reward', 'position', 'velocity']
+  env_ctor = functools.partial(
+      _dm_control_env, action_repeat, max_length, 'cartpole', 'balance', discretise=[[-1.0],[-0.25],[0.0],[0.25],[1.0]])
+  return Task('cartpole_balance_da', env_ctor, max_length, state_components)
+
+
 def cartpole_swingup(config, params):
   action_repeat = params.get('action_repeat', 8)
   max_length = 1000 // action_repeat
@@ -127,13 +136,23 @@ def gym_breakout(config, params):
   return Task('gym_breakout', env_ctor, max_length, state_components)
 
 
-def _dm_control_env(action_repeat, max_length, domain, task):
+def _dm_control_env(action_repeat, max_length, domain, task, discretise=None):
   from dm_control import suite
   env = control.wrappers.DeepMindWrapper(suite.load(domain, task), (64, 64))
   env = control.wrappers.ActionRepeat(env, action_repeat)
   env = control.wrappers.MaximumDuration(env, max_length)
   env = control.wrappers.PixelObservations(env, (64, 64), np.uint8, 'image')
   env = control.wrappers.ConvertTo32Bit(env)
+
+  # if we are discretising:
+    # a wrapper that converts list of fixed actions in original space [[x1, y1], [x2, y2], [x3, y3]]
+    # into an artificial n-dim space [a, b, c]
+    # which then gets selected with combinatorial CEM and maxed, as before.
+
+  if discretise:
+    env = control.wrappers.Discretizer(env, action_set=discretise)
+    env = control.wrappers.DiscreteActionWrap(env)
+
   return env
 
 
@@ -146,7 +165,7 @@ def _gym_env(action_repeat, min_length, max_length, name, obs_is_image=False):
   if isinstance(env.action_space, gym.spaces.Box):
     env = control.wrappers.NormalizeActions(env)
   elif isinstance(env.action_space, gym.spaces.Discrete):
-    env = control.wrappers.ContinualizeActions(env) # ADR new thing
+    env = control.wrappers.DiscreteActionWrap(env) # ADR new thing
     # pass
   else:
     raise NotImplementedError("Unsupported action space '{}.'".format(env.action_space))
