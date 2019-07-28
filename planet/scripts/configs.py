@@ -218,7 +218,7 @@ def _active_collection(config, params):
       sim.steps_after = params.get('collect_every', 5000)
       sim.steps_every = params.get('collect_every', 5000)
       sim.exploration = tools.AttrDict(
-          scale=params.get('exploration_noises', [0.3])[index],
+          scale=params.get('exploration_noises', [0.3] if not params.get('discrete_action', False) else [0.1])[index],
           schedule=functools.partial(
               tools.schedule.linear,
               ramp=params.get('exploration_ramps', [0])[index]))
