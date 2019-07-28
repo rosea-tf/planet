@@ -127,13 +127,22 @@ def gym_racecar(config, params):
 
 def gym_breakout(config, params):
   action_repeat = params.get('action_repeat', 4)
-  # softmax = params.get('softmax_discrete', False) #ADR - new thing
-  max_length = 1000 // action_repeat #?
+  max_length = 1000 // action_repeat
   state_components = ['reward']
   env_ctor = functools.partial(
       _gym_env, action_repeat, config.batch_shape[1], max_length,
       'Breakout-v0', obs_is_image=True)
   return Task('gym_breakout', env_ctor, max_length, state_components)
+
+
+def gym_freeway(config, params):
+  action_repeat = params.get('action_repeat', 3)
+  max_length = 1000 // action_repeat
+  state_components = ['reward']
+  env_ctor = functools.partial(
+      _gym_env, action_repeat, config.batch_shape[1], max_length,
+      'Freeway-v0', obs_is_image=True)
+  return Task('gym_freeway', env_ctor, max_length, state_components)
 
 
 def _dm_control_env(action_repeat, max_length, domain, task, discretise=None):
