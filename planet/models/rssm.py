@@ -67,7 +67,7 @@ class RSSM(base.Base): #inherits from RNN cell
 
   def __init__(
       self, state_size, belief_size, embed_size,
-      future_rnn=False, mean_only=False, min_stddev=0.1):
+      future_rnn=False, mean_only=False, min_stddev=0.1, second_timescale=None):
     self._state_size = state_size # dim of latent state?: 30
     self._belief_size = belief_size # h: both these come from model_size->size in configs.py: 200
     self._embed_size = embed_size
@@ -76,9 +76,16 @@ class RSSM(base.Base): #inherits from RNN cell
     self._kwargs = dict(units=self._embed_size, activation=tf.nn.relu)
     self._mean_only = mean_only
     self._min_stddev = min_stddev
+
     super(RSSM, self).__init__(
         tf.make_template('transition', self._transition),
         tf.make_template('posterior', self._posterior))
+
+    self._second_timescale = second_timescale
+
+    if self._second_timescale:
+      self._slow_rnn = RSSM(state_size, belief_size, embed_size,
+      future_rnn, mean_only, min_stddev, second_timescale=None)
 
   @property
   def state_size(self):
