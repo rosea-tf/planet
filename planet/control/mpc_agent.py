@@ -71,16 +71,14 @@ class MPCAgent(object):
     discrete_action = self._config.planner.keywords['discrete_action']
 
     # get the means (or log probs, in the discrete case)
-    action = self._config.planner(
+    action, plan_returns = self._config.planner(
         self._cell, self._config.objective, state,
         embedded.shape[1:].as_list(),
-        prev_action.shape[1:].as_list()) #[o,h,a]
+        prev_action.shape[1:].as_list()) #[o,h,a]=actvalue, [o,m]=r 
     
     # keep only the first action of the n-step sequence: we will replan over again on the next step
     action = action[:, 0] #[o,a]
     
-
-
     if self._config.exploration:
       scale = self._config.exploration.scale
       if self._config.exploration.schedule:
@@ -105,8 +103,12 @@ class MPCAgent(object):
     remember_state = nested.map(
         lambda var, val: tf.scatter_update(var, agent_indices, val),
         self._state, state, flatten=True)
+
+    #ADR - new
+    agent_extras = {'plan_returns_begin': plan_returns[0], 'plan_returns_end': plan_returns[-1]} #[i,o,m]
+
     with tf.control_dependencies(remember_state + (remember_action,)):
-      return tf.identity(action), tf.constant('')
+      return tf.identity(action), tf.constant(''), agent_extras #ADR - new
 
   def experience(self, agent_indices, *experience):
     return tf.constant('')

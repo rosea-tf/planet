@@ -39,9 +39,13 @@ def cross_entropy_method(
   obs = tf.zeros((extended_batch, horizon) + obs_shape)
   length = tf.ones([extended_batch], dtype=tf.int32) * horizon
 
-  def iteration(mean_and_stddev, _):
-    mean, stddev = mean_and_stddev
+  def iteration(mean_and_stddev, _): #the _ captures the (dummy, tf.range()) 'elems' input
     # Sample action proposals from belief.
+    
+    # 'return' (the _) needs to be provided to make tf.scan() happy, but we don't use it.
+    mean, stddev, _ = mean_and_stddev 
+
+    #note: 'amount'(m) applies within this iteration
     
     if not discrete_action:
         normal = tf.random_normal((original_batch, amount, horizon) + action_shape)
@@ -50,6 +54,7 @@ def cross_entropy_method(
     else:
         # note, action shape should be 1D here!
         # sample from a categorical dist
+        # Originalbatch; aMount; Horizon; Action; Iteration
         probs_flat = tf.reshape(mean, [-1, action_shape[0]]) #[oh, a]=probs
         choice_flat = tf.random.categorical(probs_flat, amount) #[oh, m]=choice
         action_flat = tf.one_hot(choice_flat, depth=action_shape[0], axis=-1) #[oh, m, a]={0,1}
@@ -61,10 +66,10 @@ def cross_entropy_method(
         action, (extended_batch, horizon) + action_shape)
     (_, state), _ = tf.nn.dynamic_rnn(
         cell, (0 * obs, action, use_obs), initial_state=initial_state)
-    reward = objective_fn(state)
+    reward = objective_fn(state) #[om, h] = r
     return_ = discounted_return.discounted_return(
-        reward, length, discount)[:, 0]
-    return_ = tf.reshape(return_, (original_batch, amount))
+        reward, length, discount)[:, 0] #[om] = g
+    return_ = tf.reshape(return_, (original_batch, amount)) #[o, m] = g
     # Re-fit belief to the best ones.
     _, indices = tf.nn.top_k(return_, topk, sorted=False)
     indices += tf.range(original_batch)[:, None] * amount
@@ -80,19 +85,26 @@ def cross_entropy_method(
 
     # mean = tf.Print(mean, [mean[0, 0]], summarize=8, message="Mean: ")
 
-    return mean, stddev
+    
 
-  mean = tf.zeros((original_batch, horizon) + action_shape)
-  # mean = tf.Print(mean, [mean[0, 0]], summarize=8, message="NEW PLAN: ")
+    return mean, stddev, return_ #[o,h,a]=actvalue (one iteration)
+
   # initialise a gaussian with mean zero
   # in discrete case, these will be logprobs for a gen. bernoulli
+  mean = tf.zeros((original_batch, horizon) + action_shape)
   
   # this will only have effect in the gaussian/continuous case
   stddev = tf.ones((original_batch, horizon) + action_shape)
   
-  mean, stddev = tf.scan(
-      iteration, tf.range(iterations), (mean, stddev), back_prop=False) #[i,o,h,a]
+  returns = tf.zeros((original_batch, amount))
+
+  # If an initializer is provided, then the output of fn must have the same structure as initializer;
+  # and the first argument of fn must match this structure.
   
-  mean, stddev = mean[-1], stddev[-1]  # Select belief at last iterations: [o,h,a]
+  mean, stddev, returns = tf.scan(
+      fn=iteration, elems=tf.range(iterations), initializer=(mean, stddev, returns), back_prop=False) 
+      #[i,o,h,a]=actvalue; [i,o,m]=r 
+  
+  mean, stddev = mean[-1], stddev[-1]  # Select belief at last iterations: [o,h,a]=actvalue
       
-  return mean 
+  return mean, returns

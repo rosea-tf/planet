@@ -35,7 +35,7 @@ def simulate(
     isolate_envs='none', expensive_summaries=False, name='simulate'):
   summaries = []
   with tf.variable_scope(name):
-    return_, image, action, reward = collect_rollouts(
+    return_, image, action, reward, agent_extras = collect_rollouts(
         step=step,
         env_ctor=env_ctor,
         duration=duration,
@@ -52,6 +52,11 @@ def simulate(
           'image', image, max_length=duration))
       summaries.append(tools.gif_summary(
           'animation', image, max_outputs=1, fps=20))
+
+      #ADR - new
+      for k, v in agent_extras.items():
+        summaries.append(tf.summary.histogram(k, v))
+
   summary = tf.summary.merge(summaries)
   return summary, return_mean
 
@@ -62,7 +67,7 @@ def collect_rollouts(
   agent = mpc_agent.MPCAgent(batch_env, step, False, False, agent_config)
 
   def simulate_fn(unused_last, step):
-    done, score, unused_summary = simulate_step(
+    done, score, unused_summary, agent_extras = simulate_step(
         batch_env, agent,
         log=False,
         reset=tf.equal(step, 0))
@@ -70,22 +75,40 @@ def collect_rollouts(
       image = batch_env.observ
       batch_action = batch_env.action
       batch_reward = batch_env.reward
-    return done, score, image, batch_action, batch_reward
+    return done, score, image, batch_action, batch_reward, agent_extras
+
+  init_extras = {
+      'plan_returns_begin':
+          tf.zeros([
+              1, #batch goes here??
+              agent._config['planner'].keywords['amount']
+          ], tf.float32),
+      'plan_returns_end':
+          tf.zeros([
+              1, #batch goes here??
+              agent._config['planner'].keywords['amount']
+          ], tf.float32)
+  }
 
   initializer = (
       tf.zeros([num_agents], tf.bool),
       tf.zeros([num_agents], tf.float32),
       0 * batch_env.observ,
       0 * batch_env.action,
-      tf.zeros([num_agents], tf.float32))
-  done, score, image, action, reward = tf.scan(
+      tf.zeros([num_agents], tf.float32),
+      init_extras)
+  done, score, image, action, reward, agent_extras = tf.scan(
       simulate_fn, tf.range(duration),
       initializer, parallel_iterations=1)
   score = tf.boolean_mask(score, done)
   image = tf.transpose(image, [1, 0, 2, 3, 4])
   action = tf.transpose(action, [1, 0, 2])
   reward = tf.transpose(reward)
-  return score, image, action, reward
+
+  # dims:[Dimension(333), Dimension(1), Dimension(1000)]
+  agent_extras = tools.nested.map(lambda tensor: tf.reshape(tf.transpose(tensor, [1, 0, 2]), [1, -1]), agent_extras)
+
+  return score, image, action, reward, agent_extras
 
 
 def define_batch_env(env_ctor, num_agents, isolate_envs):
@@ -156,7 +179,7 @@ def simulate_step(batch_env, algo, log=True, reset=False):
     """
     prevob = batch_env.observ + 0  # Ensure a copy of the variable value.
     agent_indices = tf.range(len(batch_env))
-    action, step_summary = algo.perform(agent_indices, prevob)
+    action, step_summary, agent_extras = algo.perform(agent_indices, prevob) #algo = mpcagent
     action.set_shape(batch_env.action.shape)
     with tf.control_dependencies([batch_env.step(action)]):
       add_score = score_var.assign_add(batch_env.reward)
@@ -170,7 +193,7 @@ def simulate_step(batch_env, algo, log=True, reset=False):
           batch_env.done,
           batch_env.observ)
       summary = tf.summary.merge([step_summary, experience_summary])
-    return summary, add_score, inc_length
+    return summary, add_score, inc_length, agent_extras
 
   def _define_end_episode(agent_indices):
     """Notify the algorithm of ending episodes.
@@ -227,7 +250,7 @@ def simulate_step(batch_env, algo, log=True, reset=False):
         lambda: _define_begin_episode(agent_indices),
         lambda: (str(), score_var, length_var))
     with tf.control_dependencies([begin_episode]):
-      step, score, length = _define_step()
+      step, score, length, agent_extras = _define_step()
     with tf.control_dependencies([step]):
       agent_indices = tf.cast(tf.where(batch_env.done)[:, 0], tf.int32)
       end_episode = tf.cond(
@@ -239,4 +262,4 @@ def simulate_step(batch_env, algo, log=True, reset=False):
     with tf.control_dependencies([summary]):
       score = 0.0 + score
       done = batch_env.done
-    return done, score, summary
+    return done, score, summary, agent_extras
