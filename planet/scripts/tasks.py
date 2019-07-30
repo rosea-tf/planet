@@ -165,10 +165,14 @@ def _dm_control_env(action_repeat, max_length, domain, task, discretise=None):
   return env
 
 
-def _gym_env(action_repeat, min_length, max_length, name, obs_is_image=False):
+def _gym_env(action_repeat, min_length, max_length, name, obs_is_image=False, explicit_frameskip=True):
   import gym
-  env = gym.make(name)
-  env = control.wrappers.ActionRepeat(env, action_repeat)
+
+  if not explicit_frameskip:
+    env = gym.make(name)
+    env = control.wrappers.ActionRepeat(env, action_repeat)
+  else:
+    env = gym.make(name, frameskip=action_repeat)
   
   ### ADR: additions to cope with discrete action spaces
   if isinstance(env.action_space, gym.spaces.Box):
