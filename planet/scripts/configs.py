@@ -96,7 +96,12 @@ def _model_components(config, params):
         params.get('future_rnn', False),
         params.get('mean_only', False),
         params.get('min_stddev', 1e-1))
-        #ADR NB:
+  elif model == 'rssm_fastslow':
+    config.cell = functools.partial(
+        models.RSSM_FastSlow, state_size, size, size,
+        params.get('future_rnn', False),
+        params.get('mean_only', False),
+        params.get('min_stddev', 1e-1))        #ADR NB:
         # state_size, belief_size, embed_size, future_rnn=False, mean_only=False, min_stddev=1e-5
   else:
     raise NotImplementedError("Unknown model '{}.".format(params.model))
