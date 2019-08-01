@@ -109,7 +109,7 @@ perfs = []
 
 frameskip = 4
 horizon = 60
-amount = 100
+amount = 1000
 
 env = gym.make('Breakout-v0', frameskip=frameskip)
 env.seed(0)
