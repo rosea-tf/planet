@@ -86,13 +86,18 @@ class RSSM_FastSlow(base.Base): #inherits from RNN cell
     rhs = self.dist_from_state(rhs, mask)
     return tools.mask(tfd.kl_divergence(lhs, rhs), mask)
 
-  def _fastslow_merge(self, prev_state, prev_action, obs, slow_fn, fast_fn):
+  def _fastslow_merge(self, prev_state, prev_action, obs, slow_fn, fast_fn, slow_counter):
     # they have variable shapes (either 30 or 200), so...
     slow_prev_state = nested.map(lambda tensor: tensor[..., :int(int(tensor.shape[-1]) * self._slow_ppn)], prev_state)
     fast_prev_state = nested.map(lambda tensor: tensor[..., int(int(tensor.shape[-1]) * self._slow_ppn):], prev_state)
     
-    #TODO: time check
-    slow_next_state = slow_fn(slow_prev_state, prev_action, obs)
+    #time check
+    slow_next_state = tf.cond(tf.equal(slow_counter, 0), lambda: slow_fn(slow_prev_state, prev_action, obs), lambda: slow_prev_state)
+    
+    # slow_counter = tf.Print(slow_counter, [slow_counter], message="slow_count: ")
+
+    slow_counter = tf.mod(tf.add(slow_counter, 1), self._slow_timescale)
+    
     fast_next_state = fast_fn(fast_prev_state, prev_action, obs)
 
     next_state = {k: tf.concat([slow_next_state[k], fast_next_state[k]], -1) for k in slow_next_state.keys()}
@@ -102,8 +107,8 @@ class RSSM_FastSlow(base.Base): #inherits from RNN cell
   def _transition(self, prev_state, prev_action, zero_obs):
     """Compute prior next state by applying the transition dynamics."""
     
-    return self._fastslow_merge(prev_state, prev_action, zero_obs, self._slow_rnn._transition, self._fast_rnn._transition)
+    return self._fastslow_merge(prev_state, prev_action, zero_obs, self._slow_rnn._transition, self._fast_rnn._transition, self._slow_count_prior)
 
   def _posterior(self, prev_state, prev_action, obs):
     """Compute posterior state from previous state and current observation."""
-    return self._fastslow_merge(prev_state, prev_action, obs, self._slow_rnn._posterior, self._fast_rnn._posterior)
+    return self._fastslow_merge(prev_state, prev_action, obs, self._slow_rnn._posterior, self._fast_rnn._posterior, self._slow_count_postr)
