@@ -92,10 +92,20 @@ def cross_entropy_method(
   reward_topk_over_iters = np.zeros([iterations, topk, horizon])
   best_path_over_iters = np.zeros([iterations, horizon])
 
+
+  # with open('realcem/pack.pkl', 'rb') as file:
+    # pack = pickle.load(file)
+  
+  # mean_over_iters, stddev_over_iters, best_path_over_iters, reward_over_iters, reward_topk_over_iters = pack
+
+
+  # for i in range(iterations):
   for i in range(iterations):
     mean_over_iters[i], stddev_over_iters[i], best_path_over_iters[
         i], reward_over_iters[i], reward_topk_over_iters[i] = iteration(
             mean, stddev)
+    mean = mean_over_iters[i]
+    stddev = stddev_over_iters[i]
 
   # mean, stddev, = mean[-1], stddev[-1]  # Select belief at last iterations: [o,h,a]
 
@@ -108,7 +118,7 @@ Perf = namedtuple('CEMPerformance', 'frameskip horizon amount rewards')
 perfs = []
 
 frameskip = 4
-horizon = 60
+horizon = 48
 amount = 1000
 
 env = gym.make('Breakout-v0', frameskip=frameskip)
@@ -120,15 +130,26 @@ done = False
 total = 0
 
 while not done:
-  pack = cross_entropy_method(env, horizon, discount=0.98)
+  # pack = cross_entropy_method(env, horizon, discount=0.98)
 
-  with open('realcem/pack.pkl', 'wb') as file:
-    pickle.dump(pack, file)
-  mean_over_iters, stddev_over_iters, best_path_over_iters, reward_over_iters, reward_topk_over_iters = pack
+  # with open('realcem/pack.pkl', 'wb') as file:
+    # pickle.dump(pack, file)
+  
+  # with open('realcem/pack.pkl', 'rb') as file:
+    # pack = pickle.load(file)
+    
+  # mean_over_iters, stddev_over_iters, best_path_over_iters, reward_over_iters, reward_topk_over_iters = pack
 
-  for i, c in enumerate(best_path_over_iters[-1]):
+  path = np.array([3, 2, 3, 0, 0, 1, 2, 2, 3, 3, 3, 3, 2, 3, 1, 0, 0, 3, 3, 1, 0, 3, 3, 1, 0, 3, 3, 2, 0, 3, 2, 3, 3, 2, 3, 2, 1, 2, 1, 0, 0, 2, 0, 3, 3, 0, 0, 0])
+  # path = best_path_over_iters[-1]
+
+  for i, c in enumerate(path):
     env.render()
     time.sleep(0.25)
+    if c == 2:
+      c = 3
+    elif c == 3:
+      c = 2
     obs, reward, done, info = env.step(int(c))
     if done:
       break
@@ -154,5 +175,3 @@ env.close()
 # rewards.shape
 
 # rewards.sum(axis=1)
-
-#%%
