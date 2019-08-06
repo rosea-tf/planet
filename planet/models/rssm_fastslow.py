@@ -30,7 +30,7 @@ class RSSM_FastSlow(base.Base): #inherits from RNN cell
 
   def __init__(
       self, state_size, belief_size, embed_size,
-      future_rnn=False, mean_only=False, min_stddev=0.1, slow_timescale=4, slow_ppn=0.25): #TODO
+      future_rnn=False, mean_only=False, min_stddev=0.1, slow_timescale=4, slow_ppn=0.25):
     self._state_size = state_size # dim of latent state?: 30
     self._belief_size = belief_size # h: both these come from model_size->size in configs.py: 200
     self._embed_size = embed_size

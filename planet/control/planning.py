@@ -27,11 +27,17 @@ def cross_entropy_method(
     cell, objective_fn, state, obs_shape, action_shape, horizon,
     amount=1000, topk=100, iterations=10, discount=0.99,
     min_action=-1, max_action=1,
-    discrete_action=False): #ADR
+    discrete_action=False, tap_cell=None, tap_state=None): #ADR
   obs_shape, action_shape = tuple(obs_shape), tuple(action_shape)
   original_batch = tools.shape(tools.nested.flatten(state)[0])[0]
   initial_state = tools.nested.map(lambda tensor: tf.tile(
       tensor, [amount] + [1] * (tensor.shape.ndims - 1)), state)
+
+  # ADR
+  if tap_cell is not None:
+    initial_tap_state = tools.nested.map(lambda tensor: tf.tile(
+      tensor, [amount] + [1] * (tensor.shape.ndims - 1)), tap_state)
+
   
   # pick up the standard batch size as used in 'sample', 'belief', etc
   extended_batch = tools.shape(tools.nested.flatten(initial_state)[0])[0]
@@ -62,6 +68,18 @@ def cross_entropy_method(
     (_, state), _ = tf.nn.dynamic_rnn(
         cell, (0 * obs, action, use_obs), initial_state=initial_state)
     reward = objective_fn(state)
+
+    if tap_cell is not None:
+      # maybe do the objective function hack here...
+      (_, tap_state), _ = tf.nn.dynamic_rnn(tap_cell, (0 * obs, action, use_obs), initial_state=initial_tap_state)
+
+      divergence = tap_cell.divergence_from_states(state, tap_state)
+
+      #print divergence TODO
+      divergence = tf.Print(divergence, [divergence])
+
+      reward -= divergence
+
     return_ = discounted_return.discounted_return(
         reward, length, discount)[:, 0]
     return_ = tf.reshape(return_, (original_batch, amount))

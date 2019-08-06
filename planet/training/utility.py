@@ -213,10 +213,97 @@ def compute_losses(
       loss = tf.reduce_sum(loss, 1) / tf.reduce_sum(tf.to_float(mask), 1)
     elif key in heads:
       output = heads[key](features) #features is belief + state (230): heads[key] is a function that returns a tf.distribution. Note that heads is a tf.make_template of config.heads
-      loss = -tools.mask(output.log_prob(target[key]), mask) 
+      loss = -tools.mask(output.log_prob(target[key]), mask)
     else:
       message = "Loss scale references unknown head '{}'."
       raise KeyError(message.format(key))
+    # Average over the batch and normalize by the maximum chunk length.
+    loss = tf.reduce_mean(loss)
+    losses[key] = tf.check_numerics(loss, key) if debug else loss
+  return losses
+
+
+def compute_tap_losses(
+    loss_scales, cell, heads, step, target, prior, posterior, mask,
+    free_nats=None, debug=False):
+  """ ADR
+  most of the passed inputs get ignored here
+  """
+  features = cell.features_from_state(posterior)
+
+  original_batch, original_seq = tools.shape(features)[0:2] #from planning.py
+
+  # create a new dim at position 1: "seq_predicted"
+  features_exp = tools.nested.map(
+      lambda tensor: tf.broadcast_to(tensor[:, None], [
+          original_batch, original_seq] + tools.shape(tensor)[1:]), features)
+  #  [[1 2 3]
+  #   [1 2 3]
+  #   [1 2 3]]
+
+  target_exp = tools.nested.map(
+      lambda tensor: tf.broadcast_to(tensor[:, :, None], [
+          original_batch, original_seq] + tools.shape(tensor)[1:]), target)
+  #   [[5 5 5]
+  #    [6 6 6]
+  #    [7 7 7]]
+  
+  tap_mask = tf.sequence_mask(tf.range(original_seq), original_seq)
+      # [[False, False, False],
+      #  [ True, False, False],
+      #  [ True,  True, False]]
+  
+  # add an extra dim in the `seq_to` position, then fill it out
+  mask_exp = tf.broadcast_to(mask[:, None], [
+          original_batch, original_seq, original_seq, 1])
+
+  # we add an extra dim on the start and end of tapmask to match 
+  # [original_batch, original_seq, original_seq, 1]
+  # (implicit broadcasting fills it out)
+  mask_comb = tf.logical_and(mask_exp, tap_mask[None, ..., None])
+
+  mask_tile = tf.reshape(mask_comb, [
+          original_batch * original_seq, original_seq, 1])
+
+  features_tile = tools.nested.map(
+      lambda tensor: tf.reshape(tensor, [
+          original_batch * original_seq] + tools.shape(tensor)[2:]), features_exp)
+  
+  target_tile = tools.nested.map(
+      lambda tensor: tf.reshape(tensor, [
+          original_batch * original_seq] + tools.shape(tensor)[2:]), target_exp)
+  
+
+  losses = {}
+  #loss_scales contains a set of weights for each component of the loss
+  for key, scale in loss_scales.items():
+    # Skip losses with zero or None scale to save computation.
+    if not scale:
+      continue
+    elif key == 'divergence':
+      # we don't care about the prior here, since we will never be open-loop unrolling this thing
+      pass
+    elif key == 'global_divergence':
+      # but let's still apply the global prior. no need for tiling here.
+      global_prior = {
+          'mean': tf.zeros_like(prior['mean']),
+          'stddev': tf.ones_like(prior['stddev'])}
+      loss = cell.divergence_from_states(posterior, global_prior, mask)
+      loss = tf.reduce_sum(loss, 1) / tf.reduce_sum(tf.to_float(mask), 1)
+    elif key in heads:
+      output = heads[key](features_tile) #features is belief + state (230): heads[key] is a function that returns a tf.distribution. Note that heads is a tf.make_template of config.heads
+      loss_tile = -tools.mask(output.log_prob(target_tile[key]), mask_tile)
+
+      # restore the seq_to dimension
+      loss_exp = tf.reshape(loss_tile, [original_batch, original_seq, original_seq, 1])
+
+      # find the prediction with minimum loss, from each input position
+      loss = tf.reduce_min(loss_exp, axis=1)
+
+    else:
+      message = "Loss scale references unknown head '{}'."
+      raise KeyError(message.format(key))
+
     # Average over the batch and normalize by the maximum chunk length.
     loss = tf.reduce_mean(loss)
     losses[key] = tf.check_numerics(loss, key) if debug else loss
@@ -248,7 +335,7 @@ def simulate_episodes(config, params, graph, expensive_summaries, name):
       cell=cell,
       encoder=graph.encoder,
       planner=params.planner,
-      objective=functools.partial(params.objective, graph=graph),
+      objective=functools.partial(params.objective, graph=graph), #see configs.py:_define_simulation()
       exploration=params.exploration,
       preprocess_fn=config.preprocess_fn,
       postprocess_fn=config.postprocess_fn)

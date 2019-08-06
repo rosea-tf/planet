@@ -78,8 +78,6 @@ class MPCAgent(object):
     
     # keep only the first action of the n-step sequence: we will replan over again on the next step
     action = action[:, 0] #[o,a]
-    
-
 
     if self._config.exploration:
       scale = self._config.exploration.scale

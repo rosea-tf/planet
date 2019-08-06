@@ -28,6 +28,7 @@ from planet import networks
 from planet import tools
 from planet.scripts import tasks as tasks_lib
 
+import types
 
 def default(config, params):
   config.debug = False
@@ -76,6 +77,15 @@ def _data_processing(config, params):
   config.open_loop_context = 5
   return config
 
+def _model_selector(model):
+  if model == 'ssm':
+    return models.SSM
+  elif model == 'rssm':
+    return models.RSSM
+  elif model == 'rssm_fastslow':
+    return models.RSSM_FastSlow
+  else:
+    raise NotImplementedError("Unknown model '{}.".format(params.model))
 
 def _model_components(config, params):
   network = getattr(networks, params.get('network', 'conv_ha'))
@@ -85,27 +95,40 @@ def _model_components(config, params):
   size = params.get('model_size', 200)
   state_size = params.get('state_size', 30)
   model = params.get('model', 'rssm')
-  if model == 'ssm':
-    config.cell = functools.partial(
-        models.SSM, state_size, size,
-        params.get('mean_only', False),
-        params.get('min_stddev', 1e-1))
-  elif model == 'rssm':
-    config.cell = functools.partial(
-        models.RSSM, state_size, size, size,
-        params.get('future_rnn', False),
-        params.get('mean_only', False),
-        params.get('min_stddev', 1e-1))
-  elif model == 'rssm_fastslow':
-    config.cell = functools.partial(
-        models.RSSM_FastSlow, state_size, size, size,
-        params.get('future_rnn', False),
-        params.get('mean_only', False),
-        params.get('min_stddev', 1e-1))        #ADR NB:
+
+  kwargs = dict()
+  
+  slow_ppn = params.get('slow_ppn', None)
+  if slow_ppn is not None:
+    kwargs['slow_ppn'] = slow_ppn
+  slow_timescale = params.get('slow_timescale', None)
+  if slow_timescale is not None:
+    kwargs['slow_timescale'] = slow_timescale
+  
+  # ADR - refactored
+  config.cell = functools.partial(
+      _model_selector(model), state_size, size,
+      params.get('mean_only', False),
+      params.get('min_stddev', 1e-1),
+      **kwargs)
         # state_size, belief_size, embed_size, future_rnn=False, mean_only=False, min_stddev=1e-5
+
+  # ADR: time-invariant predictor
+  tapcell = params.get('tapcell', None)
+  
+  if tapcell is None:
+    config.tapcell = None
   else:
-    raise NotImplementedError("Unknown model '{}.".format(params.model))
+    #should it share the same encoder? i guess so...
+    config.tapcell = functools.partial(
+      _model_selector(tapcell), state_size, size,
+      params.get('mean_only', False),
+      params.get('min_stddev', 1e-1))
+        # copy params for now -- later, could specify different ones
+
   return config
+
+
 
 
 def _tasks(config, params):
@@ -236,7 +259,7 @@ def _active_collection(config, params):
 
 
 def _define_simulation(task, config, params, horizon, batch_size):
-  def objective(state, graph):
+  def objective(state, graph): #NOTE: objective defined here
     return graph.heads['reward'](graph.cell.features_from_state(state)).mean()
   planner = functools.partial(
       control.planning.cross_entropy_method,

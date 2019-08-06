@@ -46,6 +46,11 @@ def define_model(data, trainer, config):
   cell = config.cell()  #RSSM
   kwargs = dict()
 
+  if config.tapcell is None:
+    tapcell = None
+  else:
+    tapcell = config.tapcell()
+
   #ADR - arguments for encoder
   kwargs['dumbnet'] = config.dumbnet
   kwargs['diff_frame'] = config.diff_frame
@@ -94,6 +99,7 @@ def define_model(data, trainer, config):
   extra_tensors = None
 
   if config.collect_latents:
+  # ADR
   # cut out overshooting: we want only posteriors from images
     extra_tensors = {
         'sample': posterior['sample'][:, :, 0, :],
@@ -118,7 +124,7 @@ def define_model(data, trainer, config):
   
   zero_step_losses = utility.compute_losses(
       loss_scales=config.zero_step_losses, 
-      cell=cell, 
+      cell=cell,  # used for .divergence_from_states(), etc
       heads=heads,  # outputs other than prior, posterior
       step=step,
       target=zs_target,
@@ -161,6 +167,32 @@ def define_model(data, trainer, config):
   if 'divergence' not in overshooting_losses:
     overshooting_losses['divergence'] = tf.zeros((), dtype=tf.float32)
 
+  # ADR - time agnostic predictions
+  if tapcell is not None:
+    # and then for a subgoal...
+    # in planning step: obj fn = divergence between tapcell-dist and cell-dist (weighted? how?)
+
+    tap_losses = utility.compute_tap_losses(
+      loss_scales=config.zero_step_losses, 
+      cell=tapcell, # same everything else, but use the separate network
+      heads=heads,  
+      step=step,
+      target=zs_target,
+      prior=zs_prior,
+      posterior=zs_posterior,
+      mask=zs_mask,
+      free_nats=config.free_nats,
+      debug=config.debug)
+
+    losses += [
+        loss * config.zero_step_losses[name] # we reuse the zs loss scales here... but should reward be down-weighted?
+        for name, loss in tap_losses.items()
+    ]  #scale gets applied here
+      
+    if 'divergence' not in tap_losses: 
+      tap_losses['divergence'] = tf.zeros((), dtype=tf.float32) #why? oh well.
+  
+  
   # Workaround for TensorFlow deadlock bug.
   loss = sum(losses)
   train_loss = tf.cond(
@@ -184,7 +216,7 @@ def define_model(data, trainer, config):
       should_collect = tf.logical_and(
           tf.equal(phase, 'train'),
           tools.schedule.binary(step, config.batch_shape[0], after, every))
-      collect_summary, _ = tf.cond(
+      collect_summary, _ = tf.cond(  #planner comes in here
           should_collect,
           functools.partial(
               utility.simulate_episodes,
