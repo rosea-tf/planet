@@ -41,8 +41,8 @@ class RSSM_FastSlow(base.Base): #inherits from RNN cell
     self._slow_state_size = int(state_size * slow_ppn)
     self._slow_belief_size = int(belief_size * slow_ppn)
     self._slow_timescale = slow_timescale
-    self._fast_state_size = state_size - self._slow_state_size
-    self._fast_belief_size = belief_size - self._slow_belief_size
+    self._fast_state_size = state_size - (self._slow_state_size if not ignore_slow else 0)
+    self._fast_belief_size = belief_size - (self._slow_belief_size if not ignore_slow else 0)
     self._ignore_slow = ignore_slow
 
     self._slow_rnn = RSSM(self._slow_state_size, self._slow_belief_size, embed_size,
