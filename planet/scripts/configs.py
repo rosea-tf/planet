@@ -104,6 +104,9 @@ def _model_components(config, params):
   slow_timescale = params.get('slow_timescale', None)
   if slow_timescale is not None:
     kwargs['slow_timescale'] = slow_timescale
+  ignore_slow = params.get('ignore_slow', None)
+  if ignore_slow is not None:
+    kwargs['ignore_slow'] = ignore_slow
   
   # ADR - refactored
   config.cell = functools.partial(

@@ -30,7 +30,7 @@ class RSSM_FastSlow(base.Base): #inherits from RNN cell
 
   def __init__(
       self, state_size, belief_size, embed_size,
-      future_rnn=False, mean_only=False, min_stddev=0.1, slow_timescale=4, slow_ppn=0.25):
+      future_rnn=False, mean_only=False, min_stddev=0.1, slow_timescale=4, slow_ppn=0.25, ignore_slow=False):
     self._state_size = state_size # dim of latent state?: 30
     self._belief_size = belief_size # h: both these come from model_size->size in configs.py: 200
     self._embed_size = embed_size
@@ -43,6 +43,7 @@ class RSSM_FastSlow(base.Base): #inherits from RNN cell
     self._slow_timescale = slow_timescale
     self._fast_state_size = state_size - self._slow_state_size
     self._fast_belief_size = belief_size - self._slow_belief_size
+    self._ignore_slow = ignore_slow
 
     self._slow_rnn = RSSM(self._slow_state_size, self._slow_belief_size, embed_size,
     future_rnn, mean_only, min_stddev)
@@ -94,21 +95,30 @@ class RSSM_FastSlow(base.Base): #inherits from RNN cell
     #time check
     slow_next_state = tf.cond(tf.equal(slow_counter, 0), lambda: slow_fn(slow_prev_state, prev_action, obs), lambda: slow_prev_state)
     
-    # slow_counter = tf.Print(slow_counter, [slow_counter], message="slow_count: ")
+    # slow_counter_print = tf.Print(slow_counter, [slow_counter], message="slow_count: ")
 
-    slow_counter = tf.mod(tf.add(slow_counter, 1), self._slow_timescale)
+    slow_counter_op = tf.assign(slow_counter, tf.mod(tf.add(slow_counter, 1), self._slow_timescale))
     
     fast_next_state = fast_fn(fast_prev_state, prev_action, obs)
 
-    next_state = {k: tf.concat([slow_next_state[k], fast_next_state[k]], -1) for k in slow_next_state.keys()}
+    with tf.control_dependencies([slow_counter_op]):
+    # with tf.control_dependencies([slow_counter_op, slow_counter_print]):
+      next_state = {k: tf.concat([slow_next_state[k], fast_next_state[k]], -1) for k in slow_next_state.keys()}
     
     return next_state
   
   def _transition(self, prev_state, prev_action, zero_obs):
     """Compute prior next state by applying the transition dynamics."""
     
+    if self._ignore_slow:
+      return self._fast_rnn._transition(prev_state, prev_action, zero_obs)
+
     return self._fastslow_merge(prev_state, prev_action, zero_obs, self._slow_rnn._transition, self._fast_rnn._transition, self._slow_count_prior)
 
   def _posterior(self, prev_state, prev_action, obs):
     """Compute posterior state from previous state and current observation."""
+
+    if self._ignore_slow:
+      return self._fast_rnn._posterior(prev_state, prev_action, obs)
+
     return self._fastslow_merge(prev_state, prev_action, obs, self._slow_rnn._posterior, self._fast_rnn._posterior, self._slow_count_postr)
