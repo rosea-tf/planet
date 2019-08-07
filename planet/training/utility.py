@@ -235,15 +235,19 @@ def compute_tap_losses(
 
   # create a new dim at position 1: "seq_predicted"
   features_exp = tools.nested.map(
-      lambda tensor: tf.broadcast_to(tensor[:, None], [
-          original_batch, original_seq] + tools.shape(tensor)[1:]), features)
-  #  [[1 2 3]
+      # workaround for tf.broadcast bug: see https://github.com/tensorflow/tensorflow/issues/27850
+      # lambda tensor: tf.broadcast_to(tensor[:, None], [
+          # original_batch, original_seq] + tools.shape(tensor)[1:]), features)
+      lambda tensor: tf.tile(tensor[:, None], [
+          1, original_seq, 1] + [1 for _ in tools.shape(tensor)[2:]]), features)  #  [[1 2 3]
   #   [1 2 3]
   #   [1 2 3]]
 
   target_exp = tools.nested.map(
-      lambda tensor: tf.broadcast_to(tensor[:, :, None], [
-          original_batch, original_seq] + tools.shape(tensor)[1:]), target)
+      # lambda tensor: tf.broadcast_to(tensor[:, :, None], [
+          # original_batch, original_seq] + tools.shape(tensor)[1:]), target)
+      lambda tensor: tf.tile(tensor[:, :, None], [
+          1, 1, original_seq] + [1 for _ in tools.shape(tensor)[2:]]), target)
   #   [[5 5 5]
   #    [6 6 6]
   #    [7 7 7]]
