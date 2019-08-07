@@ -53,6 +53,7 @@ class RSSM_FastSlow(base.Base): #inherits from RNN cell
     self._slow_count_prior = tf.Variable(0, trainable=False, dtype=tf.int32)
     self._slow_count_postr = tf.Variable(0, trainable=False, dtype=tf.int32)
 
+    #make _transition_tpl, _posterior_tpl for variable sharing
     super(RSSM_FastSlow, self).__init__(
         tf.make_template('transition', self._transition),
         tf.make_template('posterior', self._posterior))
@@ -111,14 +112,14 @@ class RSSM_FastSlow(base.Base): #inherits from RNN cell
     """Compute prior next state by applying the transition dynamics."""
     
     if self._ignore_slow:
-      return self._fast_rnn._transition(prev_state, prev_action, zero_obs)
+      return self._fast_rnn._transition_tpl(prev_state, prev_action, zero_obs)
 
-    return self._fastslow_merge(prev_state, prev_action, zero_obs, self._slow_rnn._transition, self._fast_rnn._transition, self._slow_count_prior)
+    return self._fastslow_merge(prev_state, prev_action, zero_obs, self._slow_rnn._transition_tpl, self._fast_rnn._transition_tpl, self._slow_count_prior)
 
   def _posterior(self, prev_state, prev_action, obs):
     """Compute posterior state from previous state and current observation."""
 
     if self._ignore_slow:
-      return self._fast_rnn._posterior(prev_state, prev_action, obs)
+      return self._fast_rnn._posterior_tpl(prev_state, prev_action, obs)
 
-    return self._fastslow_merge(prev_state, prev_action, obs, self._slow_rnn._posterior, self._fast_rnn._posterior, self._slow_count_postr)
+    return self._fastslow_merge(prev_state, prev_action, obs, self._slow_rnn._posterior_tpl, self._fast_rnn._posterior_tpl, self._slow_count_postr)
