@@ -77,6 +77,7 @@ def _data_processing(config, params):
   config.open_loop_context = 5
   return config
 
+
 def _model_selector(model):
   if model == 'ssm':
     return models.SSM
@@ -85,8 +86,9 @@ def _model_selector(model):
   elif model == 'rssm_fastslow':
     return models.RSSM_FastSlow
   else:
-    raise NotImplementedError("Unknown model '{}.".format(params.model))
-
+    raise NotImplementedError("Unknown model '{}.".format(model))
+    
+    
 def _model_components(config, params):
   network = getattr(networks, params.get('network', 'conv_ha'))
   config.encoder = network.encoder
@@ -108,13 +110,14 @@ def _model_components(config, params):
   if ignore_slow is not None:
     kwargs['ignore_slow'] = ignore_slow
   
-  # ADR - refactored
+  whatever = _model_selector(model)
+  
   config.cell = functools.partial(
-      _model_selector(model), state_size, size,
-      params.get('mean_only', False),
-      params.get('min_stddev', 1e-1),
-      **kwargs)
-        # state_size, belief_size, embed_size, future_rnn=False, mean_only=False, min_stddev=1e-5
+        whatever, state_size, size, size,
+        params.get('future_rnn', False),
+        params.get('mean_only', False),
+        params.get('min_stddev', 1e-1),
+        **kwargs)
 
   # ADR: time-invariant predictor
   tapcell = params.get('tapcell', None)
@@ -123,8 +126,9 @@ def _model_components(config, params):
     config.tapcell = None
   else:
     #should it share the same encoder? i guess so...
+    whatever2 = _model_selector(tapcell)
     config.tapcell = functools.partial(
-      _model_selector(tapcell), state_size, size,
+      whatever2, state_size, size,
       params.get('mean_only', False),
       params.get('min_stddev', 1e-1))
         # copy params for now -- later, could specify different ones
