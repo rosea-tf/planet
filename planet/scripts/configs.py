@@ -120,14 +120,14 @@ def _model_components(config, params):
         **kwargs)
 
   # ADR: time-invariant predictor
-  tapcell = params.get('tapcell', None)
+  tap_cell = params.get('tap_cell', None)
   
-  if tapcell is None:
-    config.tapcell = None
+  if tap_cell is None:
+    config.tap_cell = None
   else:
     #should it share the same encoder? i guess so...
-    whatever2 = _model_selector(tapcell)
-    config.tapcell = functools.partial(
+    whatever2 = _model_selector(tap_cell)
+    config.tap_cell = functools.partial(
       whatever2, state_size, size,
       params.get('mean_only', False),
       params.get('min_stddev', 1e-1))

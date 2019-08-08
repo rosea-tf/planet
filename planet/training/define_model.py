@@ -46,10 +46,10 @@ def define_model(data, trainer, config):
   cell = config.cell()  #RSSM
   kwargs = dict()
 
-  if config.tapcell is None:
-    tapcell = None
+  if config.tap_cell is None:
+    tap_cell = None
   else:
-    tapcell = config.tapcell()
+    tap_cell = config.tap_cell()
 
   #ADR - arguments for encoder
   kwargs['dumbnet'] = config.dumbnet
@@ -168,13 +168,13 @@ def define_model(data, trainer, config):
     overshooting_losses['divergence'] = tf.zeros((), dtype=tf.float32)
 
   # ADR - time agnostic predictions
-  if tapcell is not None:
+  if tap_cell is not None:
     # and then for a subgoal...
-    # in planning step: obj fn = divergence between tapcell-dist and cell-dist (weighted? how?)
+    # in planning step: obj fn = divergence between tap_cell-dist and cell-dist (weighted? how?)
 
     tap_losses = utility.compute_tap_losses(
       loss_scales=config.zero_step_losses, 
-      cell=tapcell, # same everything else, but use the separate network
+      cell=tap_cell, # same everything else, but use the separate network
       heads=heads,  
       step=step,
       target=zs_target,
