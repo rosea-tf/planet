@@ -31,12 +31,19 @@ class MPCAgent(object):
     self._should_log = should_log
     self._config = config
     self._cell = config.cell
+    self._tap_cell = config.tap_cell
     state = self._cell.zero_state(len(batch_env), tf.float32)
     var_like = lambda x: tf.get_local_variable(
         x.name.split(':')[0].replace('/', '_') + '_var',
         shape=x.shape,
         initializer=lambda *_, **__: tf.zeros_like(x), use_resource=True)
     self._state = nested.map(var_like, state)
+
+    if self._tap_cell is not None:
+      tap_state = self._tap_cell.zero_state(len(batch_env), tf.float32)
+      self._tap_state = nested.map(var_like, tap_state)
+
+
     self._prev_action = tf.get_local_variable(
         'prev_action_var', shape=self._batch_env.action.shape,
         initializer=lambda *_, **__: tf.zeros_like(self._batch_env.action),
@@ -60,10 +67,22 @@ class MPCAgent(object):
     state = nested.map(
         lambda tensor: tf.gather(tensor, agent_indices),
         self._state)
+
+    if self._tap_cell is not None:
+      tap_state = nested.map(
+          lambda tensor: tf.gather(tensor, agent_indices),
+          self._tap_state)
+    else:
+      tap_state = None
+    
+
     prev_action = self._prev_action + 0
     with tf.control_dependencies([prev_action]):
       use_obs = tf.ones(tf.shape(agent_indices), tf.bool)[:, None]
       _, state = self._cell((embedded, prev_action, use_obs), state)
+
+      if self._tap_cell is not None:
+        _, tap_state = self._tap_cell((embedded, prev_action, use_obs), tap_state)
     
     # note, self._config is actually an agent_config object, 
     # not the usual config object that would contain the discrete_action flag
@@ -72,10 +91,20 @@ class MPCAgent(object):
 
     # get the means (or log probs, in the discrete case)
     action = self._config.planner(
-        self._cell, self._config.objective, state,
-        embedded.shape[1:].as_list(),
-        prev_action.shape[1:].as_list()) #[o,h,a]
-    
+        cell=self._cell,
+        objective_fn=self._config.objective, state=state,
+        obs_shape=embedded.shape[1:].as_list(),
+        action_shape=prev_action.shape[1:].as_list(),
+        tap_cell=self._tap_cell, tap_state=tap_state,
+        ) #[o,h,a]
+      # PARTIALS
+      # amount=params.get('cem_amount', 1000),
+      # topk=params.get('cem_topk', 100),
+      # iterations=params.get('cem_iterations', 10),
+      # horizon=horizon,
+      # discrete_action=params.get('discrete_action'))
+
+
     # keep only the first action of the n-step sequence: we will replan over again on the next step
     action = action[:, 0] #[o,a]
 

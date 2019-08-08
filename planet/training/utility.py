@@ -337,6 +337,7 @@ def simulate_episodes(config, params, graph, expensive_summaries, name):
   cell = graph.cell
   agent_config = tools.AttrDict(
       cell=cell,
+      tap_cell=graph.tap_cell,
       encoder=graph.encoder,
       planner=params.planner,
       objective=functools.partial(params.objective, graph=graph), #see configs.py:_define_simulation()
