@@ -73,9 +73,15 @@ def cross_entropy_method(
       # maybe do the objective function hack here...
       (_, tap_state), _ = tf.nn.dynamic_rnn(tap_cell, (0 * obs, action, use_obs), initial_state=initial_tap_state)
 
-      divergence = tap_cell.divergence_from_states(state, tap_state)
+      # add an extra dimension because it's what div_from_states wants
+      state_ = tools.nested.map(lambda tensor: tensor[:, :, None], state)
+      tap_state_ = tools.nested.map(lambda tensor: tensor[:, :, None], tap_state)
+      blank_mask = tf.ones(tools.shape(state_['mean'])[0:3], dtype=tf.dtypes.bool)
 
+      divergence = tap_cell.divergence_from_states(state_, tap_state_, blank_mask)
+      print("divergence set up")
       #print divergence TODO
+      divergence = tf.reduce_mean(divergence)
       divergence = tf.Print(divergence, [divergence])
 
       reward -= divergence
