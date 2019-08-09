@@ -81,10 +81,10 @@ def cross_entropy_method(
       divergence = tap_cell.divergence_from_states(state_, tap_state_, blank_mask)
       print("divergence set up")
       #print divergence TODO
-      divergence = tf.reduce_mean(divergence)
+      divergence = tf.squeeze(divergence) #get rid of 1 at end
       divergence = tf.Print(divergence, [divergence])
 
-      reward -= divergence
+      reward = tf.subtract(reward, divergence)
 
     return_ = discounted_return.discounted_return(
         reward, length, discount)[:, 0]
