@@ -78,7 +78,9 @@ def cross_entropy_method(
       tap_state_ = tools.nested.map(lambda tensor: tensor[:, :, None], tap_state)
       blank_mask = tf.ones(tools.shape(state_['mean'])[0:3], dtype=tf.dtypes.bool)
 
-      divergence = tap_cell.divergence_from_states(state_, tap_state_, blank_mask)
+      # divergence = tap_cell.divergence_from_states(state_, tap_state_, blank_mask)
+      divergence = tf.zeros_like(blank_mask, dtype=tf.float32) #TODO!!!!!!!!
+      
       print("divergence set up")
       #print divergence TODO
       divergence = tf.squeeze(divergence) #get rid of 1 at end
