@@ -145,6 +145,16 @@ def gym_freeway(config, params):
   return Task('gym_freeway', env_ctor, max_length, state_components)
 
 
+def gym_qbert(config, params):
+  action_repeat = params.get('action_repeat', 3)
+  max_length = 1000 // action_repeat
+  state_components = ['reward']
+  env_ctor = functools.partial(
+      _gym_env, action_repeat, config.batch_shape[1], max_length,
+      'Qbert-v0', obs_is_image=True)
+  return Task('gym_qbert', env_ctor, max_length, state_components)
+
+  
 def _dm_control_env(action_repeat, max_length, domain, task, discretise=None):
   from dm_control import suite
   env = control.wrappers.DeepMindWrapper(suite.load(domain, task), (64, 64))
