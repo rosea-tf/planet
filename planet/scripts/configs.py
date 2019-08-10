@@ -38,11 +38,12 @@ def default(config, params):
   config = _loss_functions(config, params)
   config = _training_schedule(config, params)
 
-  #ADR
+  #ADR - TODO, move these outside default?
   config.dumbnet = params.get('dumbnet', False)
   config.collect_latents = params.get('collect_latents', False)
   config.diff_frame = params.get('diff_frame', False)
   config.discrete_action = params.get('discrete_action', False)
+  config.warm_start = params.get('warm_start', False)
 
   return config
 

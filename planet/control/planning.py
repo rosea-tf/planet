@@ -27,7 +27,7 @@ def cross_entropy_method(
     cell, objective_fn, state, obs_shape, action_shape, horizon,
     amount=1000, topk=100, iterations=10, discount=0.99,
     min_action=-1, max_action=1,
-    discrete_action=False): #ADR
+    discrete_action=False, warm_start=None): #ADR
   obs_shape, action_shape = tuple(obs_shape), tuple(action_shape)
   original_batch = tools.shape(tools.nested.flatten(state)[0])[0]
   initial_state = tools.nested.map(lambda tensor: tf.tile(
@@ -93,7 +93,10 @@ def cross_entropy_method(
 
   # initialise a gaussian with mean zero
   # in discrete case, these will be logprobs for a gen. bernoulli
-  mean = tf.zeros((original_batch, horizon) + action_shape)
+  if warm_start is None:
+    mean = tf.zeros((original_batch, horizon) + action_shape)
+  else:
+    mean = warm_start
   
   # this will only have effect in the gaussian/continuous case
   stddev = tf.ones((original_batch, horizon) + action_shape)
