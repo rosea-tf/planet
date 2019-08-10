@@ -71,13 +71,17 @@ class MPCAgent(object):
     discrete_action = self._config.planner.keywords['discrete_action']
 
     # get the means (or log probs, in the discrete case)
-    action, plan_returns = self._config.planner(
+    action, single, plan_returns = self._config.planner(
         self._cell, self._config.objective, state,
         embedded.shape[1:].as_list(),
         prev_action.shape[1:].as_list()) #[o,h,a]=actvalue, [o,m]=r 
     
     # keep only the first action of the n-step sequence: we will replan over again on the next step
-    action = action[:, 0] #[o,a]
+    if not discrete_action:  
+      action = action[:, 0] #[o,a]
+    else:
+      #in discrete case, choose best single trajectory, rather than the mean
+      action = single[:, 0]
     
     if self._config.exploration:
       scale = self._config.exploration.scale

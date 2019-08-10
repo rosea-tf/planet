@@ -42,8 +42,8 @@ def cross_entropy_method(
   def iteration(mean_and_stddev, _): #the _ captures the (dummy, tf.range()) 'elems' input
     # Sample action proposals from belief.
     
-    # 'return' (the _) needs to be provided to make tf.scan() happy, but we don't use it.
-    mean, stddev, _ = mean_and_stddev 
+    # 'best_single, return' (the _, _) needs to be provided to make tf.scan() happy, but we don't use it.
+    mean, stddev, _, _ = mean_and_stddev 
 
     #note: 'amount'(m) applies within this iteration
     
@@ -58,8 +58,8 @@ def cross_entropy_method(
         probs_flat = tf.reshape(mean, [-1, action_shape[0]]) #[oh, a]=probs
         choice_flat = tf.random.categorical(probs_flat, amount) #[oh, m]=choice
         action_flat = tf.one_hot(choice_flat, depth=action_shape[0], axis=-1) #[oh, m, a]={0,1}
-        action = tf.reshape(action_flat, [original_batch, horizon, amount, action_shape[0]]) #[o, h, m, a]
-        action = tf.transpose(action, [0, 2, 1, 3]) #[o, m, h, a]
+        action = tf.reshape(action_flat, [original_batch, horizon, amount, action_shape[0]]) #[o, h, m, a]={0,1}
+        action = tf.transpose(action, [0, 2, 1, 3]) #[o, m, h, a]={0,1}
 
     # Evaluate proposal actions.
     action = tf.reshape(
@@ -72,8 +72,10 @@ def cross_entropy_method(
     return_ = tf.reshape(return_, (original_batch, amount)) #[o, m] = g
     # Re-fit belief to the best ones.
     _, indices = tf.nn.top_k(return_, topk, sorted=False)
+    index_best = tf.argmax(return_, axis=1) #[o] = i
     indices += tf.range(original_batch)[:, None] * amount
-    best_actions = tf.gather(action, indices) #[o,k,h,a]
+    best_actions = tf.gather(action, indices) #[o,k,h,a]={0,1}
+    best_single = tf.gather(action, index_best) #[o,h,a]={0,1}
     
     if not discrete_action:
         mean, variance = tf.nn.moments(best_actions, 1) #[o,h,a]
@@ -87,7 +89,7 @@ def cross_entropy_method(
 
     
 
-    return mean, stddev, return_ #[o,h,a]=actvalue (one iteration)
+    return mean, stddev, best_single, return_ #[o,h,a]=actvalue (one iteration)
 
   # initialise a gaussian with mean zero
   # in discrete case, these will be logprobs for a gen. bernoulli
@@ -96,15 +98,17 @@ def cross_entropy_method(
   # this will only have effect in the gaussian/continuous case
   stddev = tf.ones((original_batch, horizon) + action_shape)
   
+  best_single = tf.zeros((original_batch, horizon) + action_shape)
+
   returns = tf.zeros((original_batch, amount))
 
   # If an initializer is provided, then the output of fn must have the same structure as initializer;
   # and the first argument of fn must match this structure.
   
-  mean, stddev, returns = tf.scan(
-      fn=iteration, elems=tf.range(iterations), initializer=(mean, stddev, returns), back_prop=False) 
+  mean, stddev, best_single, returns = tf.scan(
+      fn=iteration, elems=tf.range(iterations), initializer=(mean, stddev, best_single, returns), back_prop=False) 
       #[i,o,h,a]=actvalue; [i,o,m]=r 
   
-  mean, stddev = mean[-1], stddev[-1]  # Select belief at last iterations: [o,h,a]=actvalue
+  mean, stddev, best_single = mean[-1], stddev[-1], best_single[-1]  # Select belief at last iterations: [o,h,a]=actvalue
       
-  return mean, returns
+  return mean, best_single, returns
