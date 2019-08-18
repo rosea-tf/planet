@@ -39,11 +39,13 @@ def default(config, params):
   config = _loss_functions(config, params)
   config = _training_schedule(config, params)
 
-  #ADR
+  #ADR - TODO, move these outside default?
   config.dumbnet = params.get('dumbnet', False)
   config.collect_latents = params.get('collect_latents', False)
   config.diff_frame = params.get('diff_frame', False)
   config.discrete_action = params.get('discrete_action', False)
+  config.warm_start = params.get('warm_start', False)
+  config.summarise_plan_returns = params.get('summarise_plan_returns', False)
 
   return config
 
@@ -253,7 +255,7 @@ def _active_collection(config, params):
       sim.steps_after = params.get('collect_every', 5000)
       sim.steps_every = params.get('collect_every', 5000)
       sim.exploration = tools.AttrDict(
-          scale=params.get('exploration_noises', [0.3])[index],
+          scale=params.get('exploration_noises', [0.3] if not params.get('discrete_action', False) else [0.1])[index],
           schedule=functools.partial(
               tools.schedule.linear,
               ramp=params.get('exploration_ramps', [0])[index]))

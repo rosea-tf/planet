@@ -335,7 +335,7 @@ def simulate_episodes(config, params, graph, expensive_summaries, name):
     env = control.wrappers.ConcatObservation(env, ['image'])
     return env
   cell = graph.cell
-  agent_config = tools.AttrDict(
+  agent_config = tools.AttrDict( #NOTE: agent_config defined here!
       cell=cell,
       tap_cell=graph.tap_cell,
       encoder=graph.encoder,
@@ -343,7 +343,10 @@ def simulate_episodes(config, params, graph, expensive_summaries, name):
       objective=functools.partial(params.objective, graph=graph), #see configs.py:_define_simulation()
       exploration=params.exploration,
       preprocess_fn=config.preprocess_fn,
-      postprocess_fn=config.postprocess_fn)
+      postprocess_fn=config.postprocess_fn,
+      warm_start=config.warm_start,
+      summarise_plan_returns=config.summarise_plan_returns,
+      )
   params = params.copy()
   params.update(agent_config)
   agent_config.update(params)

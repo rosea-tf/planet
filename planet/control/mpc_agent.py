@@ -20,6 +20,7 @@ from tensorflow_probability import distributions as tfd
 import tensorflow as tf
 
 from planet.tools import nested
+from planet.tools import shape as tools_shape
 
 
 class MPCAgent(object):
@@ -48,6 +49,20 @@ class MPCAgent(object):
         'prev_action_var', shape=self._batch_env.action.shape,
         initializer=lambda *_, **__: tf.zeros_like(self._batch_env.action),
         use_resource=True)
+    # ADR - new - for CEM warm starts
+    if self._config.warm_start:
+      orig_shape = tools_shape(self._batch_env.action)
+      warm_start_shape = [
+        orig_shape[0],
+          self._config['planner'].keywords['horizon']
+      ] + orig_shape[1:]
+      self._warm_start = tf.get_local_variable(
+        'warm_start', shape=warm_start_shape,
+        initializer=lambda *_, **__: tf.zeros(warm_start_shape, dtype=tf.float32),
+        use_resource=True)
+    else:
+      self._warm_start = None
+
 
   def begin_episode(self, agent_indices):
     state = nested.map(
@@ -58,7 +73,14 @@ class MPCAgent(object):
         self._state, state, flatten=True)
     reset_prev_action = self._prev_action.assign(
         tf.zeros_like(self._prev_action))
-    with tf.control_dependencies(reset_state + (reset_prev_action,)):
+
+    # ADR also back to zero at start of each episode
+    if self._config._warm_start:
+      reset_warm_start = self._warm_start.assign(tf.zeros_like(self._warm_start))
+    else:
+      reset_warm_start = tf.no_op()
+
+    with tf.control_dependencies(reset_state + (reset_prev_action, reset_warm_start)):
       return tf.constant('')
 
   def perform(self, agent_indices, observ):
@@ -90,29 +112,33 @@ class MPCAgent(object):
     discrete_action = self._config.planner.keywords['discrete_action']
 
     # get the means (or log probs, in the discrete case)
-    action = self._config.planner(
+    mean, single, plan_returns = self._config.planner(
         cell=self._cell,
         objective_fn=self._config.objective, state=state,
         obs_shape=embedded.shape[1:].as_list(),
-        action_shape=prev_action.shape[1:].as_list(),
+        action_shape=prev_action.shape[1:].as_list(), 
+        warm_start=self._warm_start,
         tap_cell=self._tap_cell, tap_state=tap_state,
-        ) #[o,h,a]
+        ) #[o,h,a]=actvalue, [o,m]=r
       # PARTIALS
       # amount=params.get('cem_amount', 1000),
       # topk=params.get('cem_topk', 100),
       # iterations=params.get('cem_iterations', 10),
       # horizon=horizon,
       # discrete_action=params.get('discrete_action'))
-
-
+      
     # keep only the first action of the n-step sequence: we will replan over again on the next step
-    action = action[:, 0] #[o,a]
+    if not discrete_action:
+      action = mean[:, 0] #[o,a]
+    else:
+      #in discrete case, choose best single trajectory, rather than the mean
+      action = single[:, 0]
 
     if self._config.exploration:
       scale = self._config.exploration.scale
       if self._config.exploration.schedule:
         scale *= self._config.exploration.schedule(self._step)
-    
+
       if not discrete_action:
         action = tfd.Normal(action, scale).sample()
       else:
@@ -125,15 +151,29 @@ class MPCAgent(object):
     if not discrete_action:
       action = tf.clip_by_value(action, -1, 1)
     else:
-      # pick highest prob action 
+      # pick highest prob action
       action = tf.contrib.seq2seq.hardmax(action)
 
     remember_action = self._prev_action.assign(action)
     remember_state = nested.map(
         lambda var, val: tf.scatter_update(var, agent_indices, val),
         self._state, state, flatten=True)
-    with tf.control_dependencies(remember_state + (remember_action,)):
-      return tf.identity(action), tf.constant('')
+
+    #ADR - new
+    if self._config.warm_start:
+      # cut off first action slot, add zero-means at end
+      remember_warm = self._warm_start.assign(
+          tf.concat([mean[:, 1:], tf.zeros_like(mean[:, 0:1])], axis=1))
+    else:
+      remember_warm = tf.no_op()
+
+    if self._config.summarise_plan_returns:
+      agent_extras = {'plan_returns_begin': plan_returns[0], 'plan_returns_end': plan_returns[-1]} #[i,o,m]
+    else:
+      agent_extras = dict()
+
+    with tf.control_dependencies(remember_state + (remember_action, remember_warm)):
+      return tf.identity(action), tf.constant(''), agent_extras #ADR - new
 
   def experience(self, agent_indices, *experience):
     return tf.constant('')

@@ -127,8 +127,7 @@ def gym_racecar(config, params):
 
 def gym_breakout(config, params):
   action_repeat = params.get('action_repeat', 4)
-  # softmax = params.get('softmax_discrete', False) #ADR - new thing
-  max_length = 1000 // action_repeat #?
+  max_length = 1000 // action_repeat
   state_components = ['reward']
   env_ctor = functools.partial(
       _gym_env, action_repeat, config.batch_shape[1], max_length,
@@ -136,6 +135,26 @@ def gym_breakout(config, params):
   return Task('gym_breakout', env_ctor, max_length, state_components)
 
 
+def gym_freeway(config, params):
+  action_repeat = params.get('action_repeat', 3)
+  max_length = 1000 // action_repeat
+  state_components = ['reward']
+  env_ctor = functools.partial(
+      _gym_env, action_repeat, config.batch_shape[1], max_length,
+      'Freeway-v0', obs_is_image=True)
+  return Task('gym_freeway', env_ctor, max_length, state_components)
+
+
+def gym_qbert(config, params):
+  action_repeat = params.get('action_repeat', 3)
+  max_length = 1000 // action_repeat
+  state_components = ['reward']
+  env_ctor = functools.partial(
+      _gym_env, action_repeat, config.batch_shape[1], max_length,
+      'Qbert-v0', obs_is_image=True)
+  return Task('gym_qbert', env_ctor, max_length, state_components)
+
+  
 def _dm_control_env(action_repeat, max_length, domain, task, discretise=None):
   from dm_control import suite
   env = control.wrappers.DeepMindWrapper(suite.load(domain, task), (64, 64))
@@ -156,10 +175,14 @@ def _dm_control_env(action_repeat, max_length, domain, task, discretise=None):
   return env
 
 
-def _gym_env(action_repeat, min_length, max_length, name, obs_is_image=False):
+def _gym_env(action_repeat, min_length, max_length, name, obs_is_image=False, explicit_frameskip=True):
   import gym
-  env = gym.make(name)
-  env = control.wrappers.ActionRepeat(env, action_repeat)
+
+  if not explicit_frameskip:
+    env = gym.make(name)
+    env = control.wrappers.ActionRepeat(env, action_repeat)
+  else:
+    env = gym.make(name, frameskip=action_repeat)
   
   ### ADR: additions to cope with discrete action spaces
   if isinstance(env.action_space, gym.spaces.Box):
