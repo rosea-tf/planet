@@ -92,25 +92,36 @@ class RSSM_FastSlow(base.Base): #inherits from RNN cell
     # they have variable shapes (either 30 or 200), so...
     slow_prev_state = nested.map(lambda tensor: tensor[..., :int(int(tensor.shape[-1]) * self._slow_ppn)], prev_state)
     fast_prev_state = nested.map(lambda tensor: tensor[..., int(int(tensor.shape[-1]) * self._slow_ppn):], prev_state)
-    
+
     #time check
-    slow_next_state = tf.cond(tf.equal(slow_counter, 0), lambda: slow_fn(slow_prev_state, prev_action, obs), lambda: slow_prev_state)
     
+    # slow_next_state = tf.cond(tf.equal(slow_counter, 0), lambda: slow_fn(slow_prev_state, prev_action, obs), lambda: slow_prev_state)
+    slow_next_state = slow_fn(slow_prev_state, prev_action, obs)
+
+    # FUCK
+
+
     # slow_counter_print = tf.Print(slow_counter, [slow_counter], message="slow_count: ")
 
-    slow_counter_op = tf.assign(slow_counter, tf.mod(tf.add(slow_counter, 1), self._slow_timescale))
-    
+    # slow_counter_op = tf.assign(slow_counter, tf.mod(tf.add(slow_counter, 1), self._slow_timescale))
+
     fast_next_state = fast_fn(fast_prev_state, prev_action, obs)
 
-    with tf.control_dependencies([slow_counter_op]):
+    # with tf.control_dependencies([slow_counter_op]):
     # with tf.control_dependencies([slow_counter_op, slow_counter_print]):
-      next_state = {k: tf.concat([slow_next_state[k], fast_next_state[k]], -1) for k in slow_next_state.keys()}
-    
+    # next_state = {k: tf.concat([slow_next_state[k], fast_next_state[k]], -1) for k in slow_next_state.keys()}
+
+    next_state = {
+        k: tf.concat([(1 - (1 / self._slow_timescale)) * slow_prev_state[k] +
+                      (1 / self._slow_timescale) * slow_next_state[k],
+                      fast_next_state[k]], -1) for k in slow_next_state.keys()
+    }
+
     return next_state
-  
+
   def _transition(self, prev_state, prev_action, zero_obs):
     """Compute prior next state by applying the transition dynamics."""
-    
+
     if self._ignore_slow:
       return self._fast_rnn._transition_tpl(prev_state, prev_action, zero_obs)
 
