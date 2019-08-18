@@ -252,7 +252,9 @@ def simulate_episodes(config, params, graph, expensive_summaries, name):
       exploration=params.exploration,
       preprocess_fn=config.preprocess_fn,
       postprocess_fn=config.postprocess_fn,
-      warm_start=config.warm_start)
+      warm_start=config.warm_start,
+      summarise_plan_returns=config.summarise_plan_returns,
+      )
   params = params.copy()
   params.update(agent_config)
   agent_config.update(params)

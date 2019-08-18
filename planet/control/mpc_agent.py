@@ -138,7 +138,10 @@ class MPCAgent(object):
     else:
       remember_warm = tf.no_op()
 
-    agent_extras = {'plan_returns_begin': plan_returns[0], 'plan_returns_end': plan_returns[-1]} #[i,o,m]
+    if self._config.summarise_plan_returns:
+      agent_extras = {'plan_returns_begin': plan_returns[0], 'plan_returns_end': plan_returns[-1]} #[i,o,m]
+    else:
+      agent_extras = dict()
 
     with tf.control_dependencies(remember_state + (remember_action, remember_warm)):
       return tf.identity(action), tf.constant(''), agent_extras #ADR - new

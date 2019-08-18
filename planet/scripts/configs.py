@@ -44,6 +44,7 @@ def default(config, params):
   config.diff_frame = params.get('diff_frame', False)
   config.discrete_action = params.get('discrete_action', False)
   config.warm_start = params.get('warm_start', False)
+  config.summarise_plan_returns = params.get('summarise_plan_returns', False)
 
   return config
 

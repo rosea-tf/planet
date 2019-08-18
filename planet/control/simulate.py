@@ -77,18 +77,21 @@ def collect_rollouts(
       batch_reward = batch_env.reward
     return done, score, image, batch_action, batch_reward, agent_extras
 
-  init_extras = {
-      'plan_returns_begin':
-          tf.zeros([
-              1, #batch goes here??
-              agent._config['planner'].keywords['amount']
-          ], tf.float32),
-      'plan_returns_end':
-          tf.zeros([
-              1, #batch goes here??
-              agent._config['planner'].keywords['amount']
-          ], tf.float32)
-  }
+  if agent_config.summarise_plan_returns:
+    init_extras = {
+        'plan_returns_begin':
+            tf.zeros([
+                1, #batch goes here??
+                agent._config['planner'].keywords['amount']
+            ], tf.float32),
+        'plan_returns_end':
+            tf.zeros([
+                1, #batch goes here??
+                agent._config['planner'].keywords['amount']
+            ], tf.float32)
+    }
+  else:
+    init_extras = dict()
 
   initializer = (
       tf.zeros([num_agents], tf.bool),
