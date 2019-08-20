@@ -22,6 +22,7 @@ import tensorflow_probability as tfp
 from planet import tools
 from planet.training import define_summaries, utility
 from planet.tools.overshooting import _merge_dims
+from planet.tools.state_dists import dist_from_state, divergence_from_states
 
 
 def define_model(data, trainer, config):
@@ -211,7 +212,7 @@ def define_model(data, trainer, config):
     zs_entropy = (
         tf.reduce_sum(
             tools.mask(
-                cell.dist_from_state(zs_posterior, zs_mask).entropy(), zs_mask))
+                dist_from_state(zs_posterior, zs_mask).entropy(), zs_mask))
         / tf.reduce_sum(tf.to_float(zs_mask)))
     dependencies.append(
         utility.print_metrics((
