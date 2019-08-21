@@ -31,13 +31,15 @@ class MPCAgent(object):
     self._is_training = is_training
     self._should_log = should_log
     self._config = config
-    self._cell = config.cell
-    state = self._cell.zero_state(len(batch_env), tf.float32)
+    self._cells = config.cells
+    states = [_cell.zero_state(len(batch_env), tf.float32) for _cell in self._cells]
+    
+    # checked if existing names are already distinct - they are!
     var_like = lambda x: tf.get_local_variable(
         x.name.split(':')[0].replace('/', '_') + '_var',
         shape=x.shape,
         initializer=lambda *_, **__: tf.zeros_like(x), use_resource=True)
-    self._state = nested.map(var_like, state)
+    self._states = nested.map(var_like, states)
     self._prev_action = tf.get_local_variable(
         'prev_action_var', shape=self._batch_env.action.shape,
         initializer=lambda *_, **__: tf.zeros_like(self._batch_env.action),
@@ -58,12 +60,12 @@ class MPCAgent(object):
 
 
   def begin_episode(self, agent_indices):
-    state = nested.map(
+    states = nested.map(
         lambda tensor: tf.gather(tensor, agent_indices),
-        self._state)
-    reset_state = nested.map(
+        self._states)
+    reset_states = nested.map(
         lambda var, val: tf.scatter_update(var, agent_indices, 0 * val),
-        self._state, state, flatten=True)
+        self._states, states, flatten=True)
     reset_prev_action = self._prev_action.assign(
         tf.zeros_like(self._prev_action))
 
@@ -73,28 +75,29 @@ class MPCAgent(object):
     else:
       reset_warm_start = tf.no_op()
 
-    with tf.control_dependencies(reset_state + (reset_prev_action, reset_warm_start)):
+    with tf.control_dependencies(reset_states + (reset_prev_action, reset_warm_start)):
       return tf.constant('')
 
   def perform(self, agent_indices, observ):
     observ = self._config.preprocess_fn(observ)
     embedded = self._config.encoder({'image': observ[:, None]})[:, 0]
-    state = nested.map(
+    states = nested.map(
         lambda tensor: tf.gather(tensor, agent_indices),
-        self._state)
+        self._states)
     prev_action = self._prev_action + 0
     with tf.control_dependencies([prev_action]):
       use_obs = tf.ones(tf.shape(agent_indices), tf.bool)[:, None]
-      _, state = self._cell((embedded, prev_action, use_obs), state)
+      # _, state = self._cell((embedded, prev_action, use_obs), state)
+      _, states = zip(*[_cell((embedded, prev_action, use_obs), _state) for _cell, _state in zip(self._cells, states)])
 
     # note, self._config is actually an agent_config object,
     # not the usual config object that would contain the discrete_action flag
-    # so we do this hacky thing.
+    # so we do this hacky thing. TODO - copy from actual config in simulate.py?
     discrete_action = self._config.planner.keywords['discrete_action']
 
     # get the means (or log probs, in the discrete case)
     mean, single, plan_returns = self._config.planner(
-        self._cell, self._config.objective, state,
+        self._cells, self._config.cw_taus, self._config.objective, states,
         embedded.shape[1:].as_list(),
         prev_action.shape[1:].as_list(), warm_start=self._warm_start) #[o,h,a]=actvalue, [o,m]=r
 
@@ -126,9 +129,9 @@ class MPCAgent(object):
       action = tf.contrib.seq2seq.hardmax(action)
 
     remember_action = self._prev_action.assign(action)
-    remember_state = nested.map(
+    remember_states = nested.map(
         lambda var, val: tf.scatter_update(var, agent_indices, val),
-        self._state, state, flatten=True)
+        self._states, states, flatten=True)
 
     #ADR - new
     if self._config.warm_start:
@@ -143,7 +146,7 @@ class MPCAgent(object):
     else:
       agent_extras = dict()
 
-    with tf.control_dependencies(remember_state + (remember_action, remember_warm)):
+    with tf.control_dependencies(remember_states + (remember_action, remember_warm)):
       return tf.identity(action), tf.constant(''), agent_extras #ADR - new
 
   def experience(self, agent_indices, *experience):

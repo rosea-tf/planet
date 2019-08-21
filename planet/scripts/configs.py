@@ -84,24 +84,43 @@ def _model_components(config, params):
   config.encoder = network.encoder
   config.decoder = network.decoder
   config.heads = tools.AttrDict(image=config.decoder)
-  size = params.get('model_size', 200)
-  state_size = params.get('state_size', 30)
   model = params.get('model', 'rssm')
-  if model == 'ssm':
-    config.cell = functools.partial(
-        models.SSM, state_size, size,
-        params.get('mean_only', False),
-        params.get('min_stddev', 1e-1))
-  elif model == 'rssm':
-    config.cell = functools.partial(
-        models.RSSM, state_size, size, size,
-        params.get('future_rnn', False),
-        params.get('mean_only', False),
-        params.get('min_stddev', 1e-1))
-        #ADR NB:
-        # state_size, belief_size, embed_size, future_rnn=False, mean_only=False, min_stddev=1e-5
-  else:
-    raise NotImplementedError("Unknown model '{}.".format(params.model))
+  size_list = params.get('model_size', 200)
+  state_size_list = params.get('state_size', 30)
+  cw_taus = params.get('cw_tau', 1)
+
+  if not isinstance(size_list, list):
+    size_list = [size_list]
+  
+  if not isinstance(state_size_list, list):
+    state_size_list = [state_size_list]
+
+  if not isinstance(cw_taus, list):
+    cw_taus = [cw_taus]
+
+  assert len(cw_taus) == len(state_size_list) == len(size_list)
+  assert cw_taus[0] == 1, "First cell must run full speed (tau=1)"
+
+  config.cells = []
+  config.cw_taus = cw_taus
+
+  for size, state_size in zip(size_list, state_size_list):
+    if model == 'ssm':
+      config.cells.append(functools.partial(
+          models.SSM, state_size, size,
+          params.get('mean_only', False),
+          params.get('min_stddev', 1e-1)))
+    elif model == 'rssm':
+      config.cells.append(functools.partial(
+          models.RSSM, state_size, size, size,
+          params.get('future_rnn', False),
+          params.get('mean_only', False),
+          params.get('min_stddev', 1e-1)))
+          #ADR NB:
+          # state_size, belief_size, embed_size, future_rnn=False, mean_only=False, min_stddev=1e-5
+    else:
+      raise NotImplementedError("Unknown model '{}.".format(params.model))
+
   return config
 
 
@@ -234,7 +253,7 @@ def _active_collection(config, params):
 
 def _define_simulation(task, config, params, horizon, batch_size):
   def objective(state, graph):
-    return graph.heads['reward'](graph.cell.features_from_state(state)).mean()
+    return graph.heads['reward'](graph.cells[0].features_from_state(state)).mean() #define:objective
   planner = functools.partial(
       control.planning.cross_entropy_method,
       amount=params.get('cem_amount', 1000),

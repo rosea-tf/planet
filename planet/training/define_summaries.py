@@ -57,43 +57,47 @@ def define_summaries(graph, config):
         summaries.append(tf.summary.scalar(
             'seconds_per_step', delta_time / delta_step))
 
-  with tf.variable_scope('closedloop'):
-    prior, posterior = tools.unroll.closed_loop(
-        graph.cell, graph.embedded, graph.prev_action, config.debug)
-    summaries += summary.state_summaries(
-        graph.cell, prior, posterior, mask)
-    with tf.variable_scope('prior'):
-      prior_features = graph.cell.features_from_state(prior)
-      prior_dists = {
-          name: head(prior_features)
-          for name, head in heads.items()}
-      summaries += summary.log_prob_summaries(prior_dists, graph.obs, mask)
-      summaries += summary.image_summaries(
-          prior_dists['image'], config.postprocess_fn(graph.obs['image']))
-    with tf.variable_scope('posterior'):
-      posterior_features = graph.cell.features_from_state(posterior)
-      posterior_dists = {
-          name: head(posterior_features)
-          for name, head in heads.items()}
-      summaries += summary.log_prob_summaries(posterior_dists, graph.obs, mask)
-      summaries += summary.image_summaries(
-          posterior_dists['image'], config.postprocess_fn(graph.obs['image']))
+  #TODO - fix
+  if len(graph.cells) == 1:
+    cell = graph.cells[0]
+  
+    with tf.variable_scope('closedloop'):
+      prior, posterior = tools.unroll.closed_loop(
+          cell, graph.embedded, graph.prev_action, config.debug)
+      summaries += summary.state_summaries(
+          cell, prior, posterior, mask)
+      with tf.variable_scope('prior'):
+        prior_features = cell.features_from_state(prior)
+        prior_dists = {
+            name: head(prior_features)
+            for name, head in heads.items()}
+        summaries += summary.log_prob_summaries(prior_dists, graph.obs, mask)
+        summaries += summary.image_summaries(
+            prior_dists['image'], config.postprocess_fn(graph.obs['image']))
+      with tf.variable_scope('posterior'):
+        posterior_features = cell.features_from_state(posterior)
+        posterior_dists = {
+            name: head(posterior_features)
+            for name, head in heads.items()}
+        summaries += summary.log_prob_summaries(posterior_dists, graph.obs, mask)
+        summaries += summary.image_summaries(
+            posterior_dists['image'], config.postprocess_fn(graph.obs['image']))
 
-  with tf.variable_scope('openloop'):
-    state = tools.unroll.open_loop(
-        graph.cell, graph.embedded, graph.prev_action,
-        config.open_loop_context, config.debug)
-    state_features = graph.cell.features_from_state(state)
-    state_dists = {name: head(state_features) for name, head in heads.items()}
-    summaries += summary.log_prob_summaries(state_dists, graph.obs, mask)
-    summaries += summary.image_summaries(
-        state_dists['image'], config.postprocess_fn(graph.obs['image']))
-    summaries += summary.state_summaries(graph.cell, state, posterior, mask)
-    with tf.control_dependencies(plot_summaries):
-      plot_summary = summary.prediction_summaries(
-          state_dists, graph.obs, state)
-      plot_summaries += plot_summary
-      summaries += plot_summary
+    with tf.variable_scope('openloop'):
+      state = tools.unroll.open_loop(
+          cell, graph.embedded, graph.prev_action,
+          config.open_loop_context, config.debug)
+      state_features = cell.features_from_state(state)
+      state_dists = {name: head(state_features) for name, head in heads.items()}
+      summaries += summary.log_prob_summaries(state_dists, graph.obs, mask)
+      summaries += summary.image_summaries(
+          state_dists['image'], config.postprocess_fn(graph.obs['image']))
+      summaries += summary.state_summaries(cell, state, posterior, mask)
+      with tf.control_dependencies(plot_summaries):
+        plot_summary = summary.prediction_summaries(
+            state_dists, graph.obs, state)
+        plot_summaries += plot_summary
+        summaries += plot_summary
 
   with tf.variable_scope('simulation'):
     sim_returns = []

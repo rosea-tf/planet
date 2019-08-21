@@ -21,20 +21,21 @@ import tensorflow as tf
 
 from planet.control import discounted_return
 from planet import tools
+from planet.tools.tf_repeat import tf_repeat
 
 
 def cross_entropy_method(
-    cell, objective_fn, state, obs_shape, action_shape, horizon,
+    cells, cw_taus, objective_fn, states, obs_shape, action_shape, horizon,
     amount=1000, topk=100, iterations=10, discount=0.99,
     min_action=-1, max_action=1,
     discrete_action=False, warm_start=None): #ADR
   obs_shape, action_shape = tuple(obs_shape), tuple(action_shape)
-  original_batch = tools.shape(tools.nested.flatten(state)[0])[0]
-  initial_state = tools.nested.map(lambda tensor: tf.tile(
-      tensor, [amount] + [1] * (tensor.shape.ndims - 1)), state)
+  original_batch = tools.shape(tools.nested.flatten(states[0])[0])[0]
+  initial_states = tools.nested.map(lambda tensor: tf.tile(
+      tensor, [amount] + [1] * (tensor.shape.ndims - 1)), states)
   
   # pick up the standard batch size as used in 'sample', 'belief', etc
-  extended_batch = tools.shape(tools.nested.flatten(initial_state)[0])[0]
+  extended_batch = tools.shape(tools.nested.flatten(initial_states[0])[0])[0]
   use_obs = tf.zeros([extended_batch, horizon, 1], tf.bool)
   obs = tf.zeros((extended_batch, horizon) + obs_shape)
   length = tf.ones([extended_batch], dtype=tf.int32) * horizon
@@ -61,11 +62,39 @@ def cross_entropy_method(
         action = tf.reshape(action_flat, [original_batch, horizon, amount, action_shape[0]]) #[o, h, m, a]={0,1}
         action = tf.transpose(action, [0, 2, 1, 3]) #[o, m, h, a]={0,1}
 
-    # Evaluate proposal actions.
     action = tf.reshape(
         action, (extended_batch, horizon) + action_shape)
-    (_, state), _ = tf.nn.dynamic_rnn(
-        cell, (0 * obs, action, use_obs), initial_state=initial_state)
+
+    # Evaluate proposal actions.
+
+    if len(cw_taus) == 1:
+        with tf.variable_scope('cell_{}'.format(0)):
+          (_, state), _ = tf.nn.dynamic_rnn(
+            cells[0], (0 * obs, action, use_obs), initial_state=initial_states[0])
+
+    else:
+      lstCell_states = []
+      for i, (cell, tau, initial_state) in enumerate(zip(cells, cw_taus, initial_states)):
+        with tf.variable_scope('cell_{}'.format(i)):
+          
+          # inputs all have dim 'horizon' in axis=1 - so we need varying lengths here
+          _obs = obs[:, ::tau]
+          _action = action[:, ::tau]
+          _use_obs = use_obs[:, ::tau]
+
+          (_, _state), _ = tf.nn.dynamic_rnn(
+          cell, inputs=(0 * _obs, _action, _use_obs), initial_state=initial_state)
+
+          # horizon still in axis 1. expand up to full horizon length, and trim to horizon
+          _state_xp = tools.nested.map(lambda tensor: tf_repeat(tensor, [1, tau])[:, :horizon], _state)
+
+          lstCell_states.append(_state_xp)
+
+      # now we can cat them, as usual, along the last dimension
+      states_tupCell = tools.nested.zip(*lstCell_states)
+      state = {k: tf.concat(v, axis=-1) for k, v in states_tupCell.items()}
+
+
     reward = objective_fn(state) #[om, h] = r
     return_ = discounted_return.discounted_return(
         reward, length, discount)[:, 0] #[om] = g

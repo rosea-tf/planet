@@ -183,11 +183,13 @@ def train(model_fn, datasets, logdir, config):
 
 
 def compute_losses(
-    loss_scales, cell, heads, step, target, prior, posterior, mask,
+    loss_scales, cells, heads, step, target, prior, posterior, mask,
     free_nats=None, debug=False):
-  features = cell.features_from_state(posterior)
+  
+  # state is already catted
+  features = cells[0].features_from_state(posterior)
   """
-  Extract features for the decoder network from a prior or posterior.
+  features_from_state: Extract features for the decoder network from a prior or posterior.
     return tf.concat([state['sample'], state['belief']], -1)
   """
   losses = {}
@@ -239,9 +241,10 @@ def simulate_episodes(config, params, graph, expensive_summaries, name):
       env = control.wrappers.CollectGymDataset(env, params.save_episode_dir)
     env = control.wrappers.ConcatObservation(env, ['image'])
     return env
-  cell = graph.cell
+  cells = graph.cells
   agent_config = tools.AttrDict( #NOTE: agent_config defined here!
-      cell=cell,
+      cells=cells,
+      cw_taus=config.cw_taus,
       encoder=graph.encoder,
       planner=params.planner,
       objective=functools.partial(params.objective, graph=graph),
