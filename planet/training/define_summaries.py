@@ -22,6 +22,7 @@ from tensorflow_probability import distributions as tfd
 from planet import tools
 from planet.training import utility
 from planet.tools import summary
+from planet.tools.tf_repeat import tf_repeat
 
 
 def define_summaries(graph, config):
@@ -58,46 +59,96 @@ def define_summaries(graph, config):
             'seconds_per_step', delta_time / delta_step))
 
   #TODO - fix
-  if len(graph.cells) == 1:
-    cell = graph.cells[0]
+  # if len(graph.cells) == 1:
+    # cell = graph.cells[0]
   
-    with tf.variable_scope('closedloop'):
-      prior, posterior = tools.unroll.closed_loop(
-          cell, graph.embedded, graph.prev_action, config.debug)
-      summaries += summary.state_summaries(
-          cell, prior, posterior, mask)
-      with tf.variable_scope('prior'):
-        prior_features = cell.features_from_state(prior)
-        prior_dists = {
-            name: head(prior_features)
-            for name, head in heads.items()}
-        summaries += summary.log_prob_summaries(prior_dists, graph.obs, mask)
-        summaries += summary.image_summaries(
-            prior_dists['image'], config.postprocess_fn(graph.obs['image']))
-      with tf.variable_scope('posterior'):
-        posterior_features = cell.features_from_state(posterior)
-        posterior_dists = {
-            name: head(posterior_features)
-            for name, head in heads.items()}
-        summaries += summary.log_prob_summaries(posterior_dists, graph.obs, mask)
-        summaries += summary.image_summaries(
-            posterior_dists['image'], config.postprocess_fn(graph.obs['image']))
+  lstCells_prpo_dictTens = []
+  lstCells_prpo_dictTens_xp = []
+  horizon = tools.shape(graph.embedded)[1]
 
-    with tf.variable_scope('openloop'):
-      state = tools.unroll.open_loop(
-          cell, graph.embedded, graph.prev_action,
-          config.open_loop_context, config.debug)
-      state_features = cell.features_from_state(state)
-      state_dists = {name: head(state_features) for name, head in heads.items()}
-      summaries += summary.log_prob_summaries(state_dists, graph.obs, mask)
+  with tf.variable_scope('closedloop'):
+    for i, (_cell, _tau) in enumerate(zip(graph.cells, config.cw_taus)):
+      with tf.variable_scope('cell_{}'.format(i)):
+        _embedded = graph.embedded[:, ::_tau]
+        _prev_action = graph.prev_action[:, ::_tau]
+        _mask = mask[:, ::_tau] #check?
+
+        # separate: one p/p for each cell, sep. scopes
+        _prior, _posterior = tools.unroll.closed_loop(
+            _cell, _embedded, _prev_action, config.debug)
+
+        # still sep here - entropy per cell and so on
+        summaries += summary.state_summaries(
+            _cell, _prior, _posterior, _mask)
+
+        # for use in openloop unroll later
+        lstCells_prpo_dictTens.append((_prior, _posterior,))
+
+        # expand
+        _prpo_xp = tools.nested.map(lambda tensor: tf_repeat(tensor, [1, _tau])[:, :horizon], (_prior, _posterior,))
+
+        lstCells_prpo_dictTens_xp.append(_prpo_xp)
+             
+    # ... and merge p/ps here. use cell[0] for f_f_s
+    prpo_dictTens_tupCells = tools.nested.zip(*lstCells_prpo_dictTens_xp)
+    prior, posterior = [{k: tf.concat(v, axis=-1) for k, v in d.items()} for d in prpo_dictTens_tupCells]
+
+    with tf.variable_scope('prior'):
+      prior_features = graph.cells[0].features_from_state(prior)
+      prior_dists = {
+          name: head(prior_features)
+          for name, head in heads.items()}
+      summaries += summary.log_prob_summaries(prior_dists, graph.obs, mask)
       summaries += summary.image_summaries(
-          state_dists['image'], config.postprocess_fn(graph.obs['image']))
-      summaries += summary.state_summaries(cell, state, posterior, mask)
-      with tf.control_dependencies(plot_summaries):
-        plot_summary = summary.prediction_summaries(
-            state_dists, graph.obs, state)
-        plot_summaries += plot_summary
-        summaries += plot_summary
+          prior_dists['image'], config.postprocess_fn(graph.obs['image']))
+    with tf.variable_scope('posterior'):
+      posterior_features = graph.cells[0].features_from_state(posterior)
+      posterior_dists = {
+          name: head(posterior_features)
+          for name, head in heads.items()}
+      summaries += summary.log_prob_summaries(posterior_dists, graph.obs, mask)
+      summaries += summary.image_summaries(
+          posterior_dists['image'], config.postprocess_fn(graph.obs['image']))
+
+  # only merge here
+  lstCells_openstate_dictTens_xp = []
+  with tf.variable_scope('openloop'):
+
+    # sep here.
+    for i, (_cell, _tau, _prpo) in enumerate(zip(graph.cells, config.cw_taus, lstCells_prpo_dictTens)):
+      with tf.variable_scope('cell_{}'.format(i)):
+        _embedded = graph.embedded[:, ::_tau]
+        _prev_action = graph.prev_action[:, ::_tau]
+        _mask = mask[:, ::_tau] #check?
+
+        _posterior = _prpo[1]
+
+        _state = tools.unroll.open_loop(
+            _cell, _embedded, _prev_action,
+            config.open_loop_context, config.debug)
+        
+        summaries += summary.state_summaries(_cell, _state, _posterior, _mask)
+
+        # expand
+        _state_xp = tools.nested.map(lambda tensor: tf_repeat(tensor, [1, _tau])[:, :horizon], _state)
+
+        lstCells_openstate_dictTens_xp.append(_state_xp)
+        
+    openstate_dictTens_tupCells = tools.nested.zip(*lstCells_openstate_dictTens_xp)
+
+    state = {k: tf.concat(v, axis=-1) for k, v in openstate_dictTens_tupCells.items()}
+
+    state_features = graph.cells[0].features_from_state(state)
+    state_dists = {name: head(state_features) for name, head in heads.items()}
+    summaries += summary.log_prob_summaries(state_dists, graph.obs, mask)
+    summaries += summary.image_summaries(
+        state_dists['image'], config.postprocess_fn(graph.obs['image']))
+
+    with tf.control_dependencies(plot_summaries):
+      plot_summary = summary.prediction_summaries(
+          state_dists, graph.obs, state)
+      plot_summaries += plot_summary
+      summaries += plot_summary
 
   with tf.variable_scope('simulation'):
     sim_returns = []
