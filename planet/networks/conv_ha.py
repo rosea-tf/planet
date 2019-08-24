@@ -23,15 +23,10 @@ from tensorflow_probability import distributions as tfd
 from planet import tools
 
 
-def encoder(obs, dumbnet=False, diff_frame=False):
+def encoder(obs, dumbnet=False):
   """Extract deterministic features from an observation."""
 
-  # if not diff_frame:
-  # use full set of image observations
   hidden = tf.reshape(obs['image'], [-1] + obs['image'].shape[2:].as_list()) #50x64x64x3 result
-  # else:
-  # chop off first observation in each sequence (which we don't have a previous image for)
-  # hidden = tf.reshape(obs['image'][:, 1:, ...], [-1] + obs['image'].shape[2:].as_list()) #50x64x64x3 result
 
   if not dumbnet:
     kwargs = dict(strides=2, activation=tf.nn.relu)
@@ -46,39 +41,8 @@ def encoder(obs, dumbnet=False, diff_frame=False):
   hidden = tf.layers.flatten(hidden)
   assert hidden.shape[1:].as_list() == [1024], hidden.shape.as_list()
 
-  if diff_frame:
-    # calculate difference image
-    to_subtract = tf.concat(
-        [obs['image'][:, 0:1, ...], obs['image'][:, :-1, ...]], axis=1)
-    diff = tf.subtract(obs['image'], to_subtract)
-
-    # merge batch and seq dimensions, as before
-    diff = tf.reshape(diff, [-1] + diff.shape[2:].as_list())
-
-    # do the same convolution, but with half as many filters
-    kwargs = dict(strides=2, activation=tf.nn.relu)
-    diff = tf.layers.conv2d(diff, 16, 4, **kwargs) #31x31
-    diff = tf.layers.conv2d(diff, 32, 4, **kwargs) #14x14
-    diff = tf.layers.conv2d(diff, 64, 4, **kwargs) #6x6
-    diff = tf.layers.conv2d(diff, 128, 4, **kwargs) #2x2
-
-    #flatten
-    diff = tf.layers.flatten(diff)
-    assert diff.shape[1:].as_list() == [512], diff.shape.as_list()
-
-    #append it to the flattened hidden layer
-
-    hidden = tf.concat([hidden, diff], 1)
-    assert hidden.shape[1:].as_list() == [1536], hidden.shape.as_list()
-
   hidden = tf.reshape(hidden, tools.shape(obs['image'])[:2] + [
   np.prod(hidden.shape[1:].as_list())])
-
-  # batch_seq_dim = tools.shape(obs['image'])[:2]
-
-  # if diff_frame: batch_seq_dim[1] -= 1
-
-  # hidden = tf.reshape(hidden, batch_seq_dim + hidden.shape[1:].as_list())
 
   return hidden
 
