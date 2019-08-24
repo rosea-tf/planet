@@ -67,31 +67,37 @@ def define_summaries(graph, config):
   horizon = tools.shape(graph.embedded)[1]
 
   with tf.variable_scope('closedloop'):
-    for i, (_cell, _tau) in enumerate(zip(graph.cells, config.cw_taus)):
-      with tf.variable_scope('cell_{}'.format(i)):
-        _embedded = graph.embedded[:, ::_tau]
-        _prev_action = graph.prev_action[:, ::_tau]
-        _mask = mask[:, ::_tau] #check?
 
-        # separate: one p/p for each cell, sep. scopes
-        _prior, _posterior = tools.unroll.closed_loop(
-            _cell, _embedded, _prev_action, config.debug)
+    if len(graph.cells) == 1:
+        prior, posterior = tools.unroll.closed_loop(
+        graph.cells[0], graph.embedded, graph.prev_action, config.debug)
 
-        # still sep here - entropy per cell and so on
-        summaries += summary.state_summaries(
-            _cell, _prior, _posterior, _mask)
+    else:
+      for i, (_cell, _tau) in enumerate(zip(graph.cells, config.cw_taus)):
+        with tf.variable_scope('cell_{}'.format(i)):
+          _embedded = graph.embedded[:, ::_tau]
+          _prev_action = graph.prev_action[:, ::_tau]
+          _mask = mask[:, ::_tau] #check?
 
-        # for use in openloop unroll later
-        lstCells_prpo_dictTens.append((_prior, _posterior,))
+          # separate: one p/p for each cell, sep. scopes
+          _prior, _posterior = tools.unroll.closed_loop(
+              _cell, _embedded, _prev_action, config.debug)
 
-        # expand
-        _prpo_xp = tools.nested.map(lambda tensor: tf_repeat(tensor, [1, _tau])[:, :horizon], (_prior, _posterior,))
+          # still sep here - entropy per cell and so on
+          summaries += summary.state_summaries(
+              _cell, _prior, _posterior, _mask)
 
-        lstCells_prpo_dictTens_xp.append(_prpo_xp)
-             
-    # ... and merge p/ps here. use cell[0] for f_f_s
-    prpo_dictTens_tupCells = tools.nested.zip(*lstCells_prpo_dictTens_xp)
-    prior, posterior = [{k: tf.concat(v, axis=-1) for k, v in d.items()} for d in prpo_dictTens_tupCells]
+          # for use in openloop unroll later
+          lstCells_prpo_dictTens.append((_prior, _posterior,))
+
+          # expand
+          _prpo_xp = tools.nested.map(lambda tensor: tf_repeat(tensor, [1, _tau])[:, :horizon], (_prior, _posterior,))
+
+          lstCells_prpo_dictTens_xp.append(_prpo_xp)
+              
+      # ... and merge p/ps here. use cell[0] for f_f_s
+      prpo_dictTens_tupCells = tools.nested.zip(*lstCells_prpo_dictTens_xp)
+      prior, posterior = [{k: tf.concat(v, axis=-1) for k, v in d.items()} for d in prpo_dictTens_tupCells]
 
     with tf.variable_scope('prior'):
       prior_features = graph.cells[0].features_from_state(prior)
@@ -110,33 +116,36 @@ def define_summaries(graph, config):
       summaries += summary.image_summaries(
           posterior_dists['image'], config.postprocess_fn(graph.obs['image']))
 
-  # only merge here
   lstCells_openstate_dictTens_xp = []
   with tf.variable_scope('openloop'):
+    if len(graph.cells) == 1:
+      state = tools.unroll.open_loop(
+          graph.cells[0], graph.embedded, graph.prev_action,
+          config.open_loop_context, config.debug)
+    
+    else:
+      for i, (_cell, _tau, _prpo) in enumerate(zip(graph.cells, config.cw_taus, lstCells_prpo_dictTens)):
+        with tf.variable_scope('cell_{}'.format(i)):
+          _embedded = graph.embedded[:, ::_tau]
+          _prev_action = graph.prev_action[:, ::_tau]
+          _mask = mask[:, ::_tau]
 
-    # sep here.
-    for i, (_cell, _tau, _prpo) in enumerate(zip(graph.cells, config.cw_taus, lstCells_prpo_dictTens)):
-      with tf.variable_scope('cell_{}'.format(i)):
-        _embedded = graph.embedded[:, ::_tau]
-        _prev_action = graph.prev_action[:, ::_tau]
-        _mask = mask[:, ::_tau] #check?
+          _posterior = _prpo[1]
 
-        _posterior = _prpo[1]
+          _state = tools.unroll.open_loop(
+              _cell, _embedded, _prev_action,
+              config.open_loop_context, config.debug)
+          
+          summaries += summary.state_summaries(_cell, _state, _posterior, _mask)
 
-        _state = tools.unroll.open_loop(
-            _cell, _embedded, _prev_action,
-            config.open_loop_context, config.debug)
-        
-        summaries += summary.state_summaries(_cell, _state, _posterior, _mask)
+          # expand
+          _state_xp = tools.nested.map(lambda tensor: tf_repeat(tensor, [1, _tau])[:, :horizon], _state)
 
-        # expand
-        _state_xp = tools.nested.map(lambda tensor: tf_repeat(tensor, [1, _tau])[:, :horizon], _state)
+          lstCells_openstate_dictTens_xp.append(_state_xp)
+          
+      openstate_dictTens_tupCells = tools.nested.zip(*lstCells_openstate_dictTens_xp)
 
-        lstCells_openstate_dictTens_xp.append(_state_xp)
-        
-    openstate_dictTens_tupCells = tools.nested.zip(*lstCells_openstate_dictTens_xp)
-
-    state = {k: tf.concat(v, axis=-1) for k, v in openstate_dictTens_tupCells.items()}
+      state = {k: tf.concat(v, axis=-1) for k, v in openstate_dictTens_tupCells.items()}
 
     state_features = graph.cells[0].features_from_state(state)
     state_dists = {name: head(state_features) for name, head in heads.items()}

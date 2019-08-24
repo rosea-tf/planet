@@ -94,7 +94,6 @@ def cross_entropy_method(
       states_tupCell = tools.nested.zip(*lstCell_states)
       state = {k: tf.concat(v, axis=-1) for k, v in states_tupCell.items()}
 
-
     reward = objective_fn(state) #[om, h] = r
     return_ = discounted_return.discounted_return(
         reward, length, discount)[:, 0] #[om] = g
