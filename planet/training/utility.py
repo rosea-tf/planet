@@ -290,7 +290,7 @@ def compute_tap_losses(
       global_prior = {
           'mean': tf.zeros_like(prior['mean']),
           'stddev': tf.ones_like(prior['stddev'])}
-      loss = cell.divergence_from_states(posterior, global_prior, mask)
+      loss = divergence_from_states(posterior, global_prior, mask)
       loss = tf.reduce_sum(loss, 1) / tf.reduce_sum(tf.to_float(mask), 1)
     elif key in heads:
       output = heads[key](features_tile) #features is belief + state (230): heads[key] is a function that returns a tf.distribution. Note that heads is a tf.make_template of config.heads
