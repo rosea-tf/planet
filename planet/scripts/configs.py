@@ -42,7 +42,6 @@ def default(config, params):
   #ADR - TODO, move these outside default?
   config.dumbnet = params.get('dumbnet', False)
   config.collect_latents = params.get('collect_latents', False)
-  config.diff_frame = params.get('diff_frame', False)
   config.discrete_action = params.get('discrete_action', False)
   config.warm_start = params.get('warm_start', False)
   config.summarise_plan_returns = params.get('summarise_plan_returns', False)
@@ -96,45 +95,65 @@ def _model_components(config, params):
   config.encoder = network.encoder
   config.decoder = network.decoder
   config.heads = tools.AttrDict(image=config.decoder)
-  size = params.get('model_size', 200)
-  state_size = params.get('state_size', 30)
   model = params.get('model', 'rssm')
 
+  # pick up sizes and speeds for each cell
+  size_list = params.get('model_size', 200)
+  state_size_list = params.get('state_size', 30)
+  cw_taus = params.get('cw_tau', 1)
+
+  # pick up mov_avg parameters, if any
   kwargs = dict()
-  
   ma_ppn = params.get('ma_ppn', None)
   if ma_ppn is not None:
     kwargs['ma_ppn'] = ma_ppn
   ma_alpha = params.get('ma_alpha', None)
   if ma_alpha is not None:
     kwargs['ma_alpha'] = ma_alpha
-  
-  whatever = _model_selector(model)
-  
-  config.cell = functools.partial(
-        whatever, state_size, size, size,
-        params.get('future_rnn', False),
-        params.get('mean_only', False),
-        params.get('min_stddev', 1e-1),
-        **kwargs)
 
+  # convert single values to lists
+  if not isinstance(size_list, list):
+    size_list = [size_list]
+  
+  if not isinstance(state_size_list, list):
+    state_size_list = [state_size_list]
+
+  if not isinstance(cw_taus, list):
+    cw_taus = [cw_taus]
+
+  assert len(cw_taus) == len(state_size_list) == len(size_list)
+  assert cw_taus[0] == 1, "First cell must run full speed (tau=1)"
+
+  config.cells = []
+  config.cw_taus = cw_taus
+
+  Cell_Class = _model_selector(model)
+  
+  for size, state_size in zip(size_list, state_size_list):
+    config.cells.append(functools.partial(
+          Cell_Class, state_size, size, size, # state_size, belief_size, embed_size
+          params.get('future_rnn', False),
+          params.get('mean_only', False),
+          params.get('min_stddev', 1e-1),
+          **kwargs))
+  
   # ADR: time-invariant predictor
   tap_cell = params.get('tap_cell', None)
   
   if tap_cell is None:
     config.tap_cell = None
   else:
-    #should it share the same encoder? i guess so...
-    whatever2 = _model_selector(tap_cell)
+    size, state_size = size_list[0], state_size_list[0]
+    Tap_Class = _model_selector(tap_cell)
+    
+    # copy params for now -- later, could specify different ones
     config.tap_cell = functools.partial(
-      whatever2, state_size, size,
+      Tap_Class, state_size, size, size, # state_size, belief_size, embed_size
+      params.get('future_rnn', False),
       params.get('mean_only', False),
       params.get('min_stddev', 1e-1))
-        # copy params for now -- later, could specify different ones
 
   return config
-
-
 
 
 def _tasks(config, params):
@@ -265,8 +284,8 @@ def _active_collection(config, params):
 
 
 def _define_simulation(task, config, params, horizon, batch_size):
-  def objective(state, graph): #NOTE: objective defined here
-    return graph.heads['reward'](graph.cell.features_from_state(state)).mean()
+  def objective(state, graph):
+    return graph.heads['reward'](graph.cells[0].features_from_state(state)).mean() #define:objective
   planner = functools.partial(
       control.planning.cross_entropy_method,
       amount=params.get('cem_amount', 1000),

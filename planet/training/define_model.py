@@ -18,10 +18,13 @@ import functools
 
 import tensorflow as tf
 import tensorflow_probability as tfp
+from math import ceil
 
 from planet import tools
 from planet.training import define_summaries, utility
 from planet.tools.overshooting import _merge_dims
+from planet.tools.state_dists import dist_from_state, divergence_from_states
+from planet.tools.tf_repeat import tf_repeat
 
 
 def define_model(data, trainer, config):
@@ -43,7 +46,12 @@ def define_model(data, trainer, config):
     del obs['length']
 
   # Instantiate network blocks.
-  cell = config.cell()  #RSSM
+  cells = []
+  for i, _cell in enumerate(config.cells):
+    with tf.variable_scope('cell_{}'.format(i)):
+      cells.append(_cell())  #RSSM, etc
+  del i, _cell
+  
   kwargs = dict()
 
   if config.tap_cell is None:
@@ -53,7 +61,6 @@ def define_model(data, trainer, config):
 
   #ADR - arguments for encoder
   kwargs['dumbnet'] = config.dumbnet
-  kwargs['diff_frame'] = config.diff_frame
 
   encoder = tf.make_template(
       'encoder', config.encoder, create_scope_now_=True, **kwargs)
@@ -72,14 +79,6 @@ def define_model(data, trainer, config):
   #[5x10x1024] <- [..., 5x10x64x64x3, ..., ... (other elements in obs: ignored)]
   embedded = encoder(obs)  
 
-  # if config.diff_frame:
-    # delete first element of all tensor sequences
-    # we do this after the encoder has used it
-    # data = tools.nested.map(lambda tensor: tensor[:, 1:, ...] if len(tensor.shape) > 1 else tensor, data)
-    # obs = tools.nested.map(lambda tensor: tensor[:, 1:, ...] if len(tensor.shape) > 1 else tensor, obs)
-    # prev_action = prev_action[:, 1:, ...]
-    
-
   # Separate overshooting and zero step observations because computing
   # overshooting targets for images would be expensive.
   zero_step_obs = {}  # both of these are 5x10xd
@@ -90,11 +89,59 @@ def define_model(data, trainer, config):
     if config.overshooting_losses.get(key):
       overshooting_obs[key] = value  #for now, they're identical
   assert config.overshooting <= config.batch_shape[1]
-  target, prior, posterior, mask = tools.overshooting(
-      cell, overshooting_obs, embedded, prev_action, data['length'],
+
+  max_os_length = config.overshooting + 1
+
+  if len(config.cw_taus) == 1:
+    # do it the classic way
+
+    target, prior, posterior, mask = tools.overshooting(
+      cells[0], overshooting_obs, embedded, prev_action, data['length'],
       config.overshooting + 1
-  )  
-  #prior is result of unrolling. posterior is what the unroll starts from.
+    )  
+    # prior is result of unrolling. posterior is what the unroll starts from.
+  
+  else:
+  
+    # CLOCKWORK MOD: each cell overshoots independently
+    lstCells_lstOuts_dictTens = []
+    
+    for i, (_cell, _tau) in enumerate(zip(cells, config.cw_taus)):
+      # calculate a sequence of inputs for each tau! (i.e. skip some for slow cells)
+      _overshooting_obs = tools.nested.map(lambda tensor: tensor[:, ::_tau], overshooting_obs)
+      _embedded = embedded[:, ::_tau]
+      _prev_action = prev_action[:, ::_tau]
+      _amount = ceil(max_os_length / _tau)
+
+      with tf.variable_scope('cell_{}'.format(i)):
+        _lstOutputs_dictTensors = tools.overshooting(
+            cell=_cell, target=_overshooting_obs, embedded=_embedded, prev_action=_prev_action, length=data['length'],
+            amount=_amount) 
+
+      lstCells_lstOuts_dictTens.append(_lstOutputs_dictTensors) 
+
+    del i, _cell, _tau
+    # now need to "expand" slow-speed results
+
+    # take these values straight from the first (tau=1) network
+    target, mask = lstCells_lstOuts_dictTens[0][0], lstCells_lstOuts_dictTens[0][3]
+    
+    lstCells_prpo_dictTensx = [
+      tools.nested.map(lambda tensor: 
+        tf.concat(
+          [
+            tf_repeat(tensor[:, :, 0:1], [1, tau])[:, :max_os_length],
+            tf_repeat(tensor[:, :, 1:], [1, tau, tau])[:, :max_os_length, :max_os_length] #it may over-tile, so we cut it off
+          ]
+          , axis=2)
+    , cellout[1:3])
+    for cellout, tau in zip(lstCells_lstOuts_dictTens, config.cw_taus)]
+    # [cell0:(target{p,r,v}, prior{b,m,r,s,s}, posterior..., mask), cell1:(target, prior, posterior, mask), ...]
+
+    prpo_dictTens_tupCells = tools.nested.zip(*lstCells_prpo_dictTensx)
+    # [target: {p: (cell0, cell1, ...), r:., ...}, prior: {b: (cell0, cell1, ...), ...}}]
+    
+    prior, posterior = [{k: tf.concat(v, axis=-1) for k, v in d.items()} for d in prpo_dictTens_tupCells]
 
   extra_tensors = None
 
@@ -124,7 +171,7 @@ def define_model(data, trainer, config):
   
   zero_step_losses = utility.compute_losses(
       loss_scales=config.zero_step_losses, 
-      cell=cell,  # used for .divergence_from_states(), etc
+      cells=cells,  # used for .divergence_from_states(), etc
       heads=heads,  # outputs other than prior, posterior
       step=step,
       target=zs_target,
@@ -149,7 +196,7 @@ def define_model(data, trainer, config):
       os_posterior = tools.nested.map(tf.stop_gradient, os_posterior)
     overshooting_losses = utility.compute_losses(
         config.overshooting_losses,  #doesn't include image
-        cell,
+        cells,
         heads,
         step,
         os_target,
@@ -243,7 +290,7 @@ def define_model(data, trainer, config):
     zs_entropy = (
         tf.reduce_sum(
             tools.mask(
-                cell.dist_from_state(zs_posterior, zs_mask).entropy(), zs_mask))
+                dist_from_state(zs_posterior, zs_mask).entropy(), zs_mask))
         / tf.reduce_sum(tf.to_float(zs_mask)))
     dependencies.append(
         utility.print_metrics((

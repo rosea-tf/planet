@@ -39,7 +39,8 @@ class SSM(base.Base):
                  (o)
   """
 
-  def __init__(self, state_size, embed_size, mean_only=False, min_stddev=1e-5):
+  def __init__(self, state_size, belief_size, embed_size, future_rnn=False, mean_only=False, min_stddev=1e-5):
+    # belief_size and future_rnn are not used. added only for a constructor consistent with other cell types
     self._state_size = state_size
     self._embed_size = embed_size
     self._mean_only = mean_only
@@ -57,24 +58,9 @@ class SSM(base.Base):
         'sample': self._state_size,
     }
 
-  def dist_from_state(self, state, mask=None):
-    """Extract the latent distribution from a prior or posterior state."""
-    if mask is not None:
-      stddev = tools.mask(state['stddev'], mask, value=1)
-    else:
-      stddev = state['stddev']
-    dist = tfd.MultivariateNormalDiag(state['mean'], stddev)
-    return dist
-
   def features_from_state(self, state):
     """Extract features for the decoder network from a prior or posterior."""
     return state['sample']
-
-  def divergence_from_states(self, lhs, rhs, mask):
-    """Compute the divergence measure between two states."""
-    lhs = self.dist_from_state(lhs, mask)
-    rhs = self.dist_from_state(rhs, mask)
-    return tools.mask(tfd.kl_divergence(lhs, rhs), mask)
 
   def _transition(self, prev_state, prev_action, zero_obs):
     """Compute prior next state by applying the transition dynamics."""

@@ -26,7 +26,7 @@ import tensorflow as tf
 from planet import control
 from planet import tools
 from planet.training import trainer as trainer_
-
+from planet.tools.state_dists import dist_from_state, divergence_from_states
 
 def set_up_logging():
   """Configure the TensorFlow logger."""
@@ -183,15 +183,13 @@ def train(model_fn, datasets, logdir, config):
 
 
 def compute_losses(
-    loss_scales, cell, heads, step, target, prior, posterior, mask,
+    loss_scales, cells, heads, step, target, prior, posterior, mask,
     free_nats=None, debug=False):
-  """ ADR
-  a kind of wrapper/manager for loss computation
-  The mathematical work seems to take place in rssm.py/divergence_from_states()
+  
+  # state is already catted
+  features = cells[0].features_from_state(posterior)
   """
-  features = cell.features_from_state(posterior)
-  """
-  Extract features for the decoder network from a prior or posterior.
+  features_from_state: Extract features for the decoder network from a prior or posterior.
     return tf.concat([state['sample'], state['belief']], -1)
   """
   losses = {}
@@ -201,7 +199,7 @@ def compute_losses(
     if not scale:
       continue
     elif key == 'divergence':
-      loss = cell.divergence_from_states(posterior, prior, mask)
+      loss = divergence_from_states(posterior, prior, mask)
       if free_nats is not None:
         loss = tf.maximum(tf.cast(free_nats, tf.float32), loss)
       loss = tf.reduce_sum(loss, 1) / tf.reduce_sum(tf.to_float(mask), 1)
@@ -209,7 +207,7 @@ def compute_losses(
       global_prior = {
           'mean': tf.zeros_like(prior['mean']),
           'stddev': tf.ones_like(prior['stddev'])}
-      loss = cell.divergence_from_states(posterior, global_prior, mask)
+      loss = divergence_from_states(posterior, global_prior, mask)
       loss = tf.reduce_sum(loss, 1) / tf.reduce_sum(tf.to_float(mask), 1)
     elif key in heads:
       output = heads[key](features) #features is belief + state (230): heads[key] is a function that returns a tf.distribution. Note that heads is a tf.make_template of config.heads
@@ -334,9 +332,10 @@ def simulate_episodes(config, params, graph, expensive_summaries, name):
       env = control.wrappers.CollectGymDataset(env, params.save_episode_dir)
     env = control.wrappers.ConcatObservation(env, ['image'])
     return env
-  cell = graph.cell
+  cells = graph.cells
   agent_config = tools.AttrDict( #NOTE: agent_config defined here!
-      cell=cell,
+      cells=cells,
+      cw_taus=config.cw_taus,
       tap_cell=graph.tap_cell,
       encoder=graph.encoder,
       planner=params.planner,

@@ -25,6 +25,7 @@ from planet.tools import gif_summary
 from planet.tools import image_strip_summary
 from planet.tools import mask as masklib
 from planet.tools import shape as shapelib
+from planet.tools.state_dists import dist_from_state, divergence_from_states
 
 
 def plot_summary(titles, lines, labels, name):
@@ -95,9 +96,9 @@ def dataset_summaries(directory, name='dataset'):
 
 def state_summaries(cell, prior, posterior, mask, name='state'):
   summaries = []
-  divergence = cell.divergence_from_states(posterior, prior, mask)
-  prior = cell.dist_from_state(prior, mask)
-  posterior = cell.dist_from_state(posterior, mask)
+  divergence = divergence_from_states(posterior, prior, mask)
+  prior = dist_from_state(prior, mask)
+  posterior = dist_from_state(posterior, mask)
   prior_entropy = prior.entropy()
   posterior_entropy = posterior.entropy()
   nan_to_num = lambda x: tf.where(tf.is_nan(x), tf.zeros_like(x), x)

@@ -90,25 +90,9 @@ class RSSM(base.Base): #inherits from RNN cell
         'rnn_state': self._belief_size,
     }
 
-  def dist_from_state(self, state, mask=None):
-    """Extract the latent distribution from a prior or posterior state."""
-    if mask is not None:
-      stddev = tools.mask(state['stddev'], mask, value=1)
-    else:
-      stddev = state['stddev']
-    dist = tfd.MultivariateNormalDiag(state['mean'], stddev)
-    return dist
-
   def features_from_state(self, state):
     """Extract features for the decoder network from a prior or posterior."""
     return tf.concat([state['sample'], state['belief']], -1)
-
-  def divergence_from_states(self, lhs, rhs, mask):
-    """Compute the divergence measure between two states."""
-    """ADR NB: state is a tuple of ['mean','stddev', ...]"""
-    lhs = self.dist_from_state(lhs, mask)
-    rhs = self.dist_from_state(rhs, mask)
-    return tools.mask(tfd.kl_divergence(lhs, rhs), mask)
 
   def _transition(self, prev_state, prev_action, zero_obs):
     """Compute prior next state by applying the transition dynamics."""
