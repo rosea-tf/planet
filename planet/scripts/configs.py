@@ -62,6 +62,20 @@ def debug(config, params):
   config.debug = True
   return config
 
+def newhp(config, params):
+  # match HPs to "Update hyper parameters to camera ready version."
+  # (commit 0c6f7d3c56fe691da5b0a2fc62db3cb7075cfcf4)
+  
+  with params.unlocked:
+    params.future_rnn = params.get('future_rnn', True) # makes true unless specified otherwise
+    params.free_nats = params.get('free_nats', 3.0)
+    params.overshooting = params.get('overshooting', 0)
+    params.global_divergence_scale = params.get('global_divergence_scale', 0.0)
+    params.overshooting_reward_scale = params.get('overshooting_reward_scale', 0.0)
+  
+  config = default(config, params)
+  return config
+
 
 def _data_processing(config, params):
   # config.max_episodes = None

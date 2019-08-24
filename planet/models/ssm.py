@@ -39,8 +39,10 @@ class SSM(base.Base):
                  (o)
   """
 
-  def __init__(self, state_size, belief_size, embed_size, future_rnn=False, mean_only=False, min_stddev=1e-5):
+  def __init__(self, state_size, belief_size, embed_size, future_rnn, mean_only, min_stddev):
     # belief_size and future_rnn are not used. added only for a constructor consistent with other cell types
+    # removed defaults for future_rnn, mean_only, min_stddev - these should always be specified via the .partial constructor set up in configs.py
+
     self._state_size = state_size
     self._embed_size = embed_size
     self._mean_only = mean_only
