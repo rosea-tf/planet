@@ -83,8 +83,8 @@ def _model_selector(model):
     return models.SSM
   elif model == 'rssm':
     return models.RSSM
-  elif model == 'rssm_fastslow':
-    return models.RSSM_FastSlow
+  elif model == 'rssm_ma':
+    return models.RSSM_MA
   else:
     raise NotImplementedError("Unknown model '{}.".format(model))
     
@@ -100,15 +100,12 @@ def _model_components(config, params):
 
   kwargs = dict()
   
-  slow_ppn = params.get('slow_ppn', None)
-  if slow_ppn is not None:
-    kwargs['slow_ppn'] = slow_ppn
-  slow_timescale = params.get('slow_timescale', None)
-  if slow_timescale is not None:
-    kwargs['slow_timescale'] = slow_timescale
-  ignore_slow = params.get('ignore_slow', None)
-  if ignore_slow is not None:
-    kwargs['ignore_slow'] = ignore_slow
+  ma_ppn = params.get('ma_ppn', None)
+  if ma_ppn is not None:
+    kwargs['ma_ppn'] = ma_ppn
+  ma_alpha = params.get('ma_alpha', None)
+  if ma_alpha is not None:
+    kwargs['ma_alpha'] = ma_alpha
   
   whatever = _model_selector(model)
   

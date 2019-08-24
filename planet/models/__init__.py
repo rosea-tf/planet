@@ -19,4 +19,4 @@ from __future__ import print_function
 from .base import Base
 from .rssm import RSSM
 from .ssm import SSM
-from .rssm_fastslow import RSSM_FastSlow
+from .rssm_movavg import RSSM_MA
