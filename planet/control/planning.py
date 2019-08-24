@@ -27,7 +27,7 @@ def cross_entropy_method(
     cell, objective_fn, state, obs_shape, action_shape, horizon,
     amount=1000, topk=100, iterations=10, discount=0.99,
     min_action=-1, max_action=1,
-    discrete_action=False, warm_start=None, tap_cell=None, tap_state=None): #ADR
+    discrete_action=False, warm_start=None, tap_cell=None, tap_state=None, tap_rwd_scale=1): #ADR
   obs_shape, action_shape = tuple(obs_shape), tuple(action_shape)
   original_batch = tools.shape(tools.nested.flatten(state)[0])[0]
   initial_state = tools.nested.map(lambda tensor: tf.tile(
@@ -48,7 +48,7 @@ def cross_entropy_method(
   def iteration(mean_and_stddev, _): #the _ captures the (dummy, tf.range()) 'elems' input
     # Sample action proposals from belief.
     
-    # 'best_single, return' (the _, _) needs to be provided to make tf.scan() happy, but we don't use it.
+    # the _, _ ('best_single, return') needs to be provided to make tf.scan() happy, but we don't use it.
     mean, stddev, _, _ = mean_and_stddev 
 
     #note: 'amount'(m) applies within this iteration
@@ -75,23 +75,38 @@ def cross_entropy_method(
     reward = objective_fn(state) #[om, h] = r
 
     if tap_cell is not None:
-      # maybe do the objective function hack here...
       (_, tap_state), _ = tf.nn.dynamic_rnn(tap_cell, (0 * obs, action, use_obs), initial_state=initial_tap_state)
 
-      # add an extra dimension because it's what div_from_states wants
-      state_ = tools.nested.map(lambda tensor: tensor[:, :, None], state)
-      tap_state_ = tools.nested.map(lambda tensor: tensor[:, :, None], tap_state)
-      blank_mask = tf.ones(tools.shape(state_['mean'])[0:3], dtype=tf.dtypes.bool)
-
-      # divergence = tap_cell.divergence_from_states(state_, tap_state_, blank_mask)
-      divergence = tf.zeros_like(blank_mask, dtype=tf.float32) #TODO!!!!!!!!
+      epsilon = 1e-1
       
-      print("divergence set up")
-      #print divergence TODO
-      divergence = tf.squeeze(divergence) #get rid of 1 at end
-      divergence = tf.Print(divergence, [divergence])
+      # tf's built in KL was causing FP exceptions
+      KL1 = tf.log(
+          (
+            tf.abs(tap_state['stddev']) 
+            / (tf.abs(state['stddev']) + epsilon)
+          ) + epsilon
+        )
+      # [om, h, s]
 
-      reward = tf.subtract(reward, divergence)
+      KL2 = (
+        tf.square(state['stddev']) + tf.square(state['mean'] - tap_state['mean'])
+        ) / (2 * tf.square(tap_state['stddev']) + epsilon)
+      # [om, h, s]
+
+      # there SHOULD be no infinite/nan values here now!
+
+      # average over the state dimensions, since KL is additive for independent distributions      
+      KL1_avg = tf.reduce_mean(KL1, axis=-1)
+      KL2_avg = tf.reduce_mean(KL2, axis=-1)
+      KL_avg = KL1_avg + KL2_avg - 0.5
+      # [om, h]
+
+      reward_std = tf.math.reduce_std(reward)
+
+      # change range from (0.5, 1) to (0, 1) -- then scale so that it covers 'tap_rwd_scale' stddevs of the reward dist
+      KL_scaled = (tf.subtract(tf.sigmoid(KL_avg), 0.5) * 2) * (tap_rwd_scale * reward_std)
+
+      reward = tf.subtract(reward, KL_scaled)
 
     return_ = discounted_return.discounted_return(
         reward, length, discount)[:, 0] #[om] = g
@@ -110,10 +125,6 @@ def cross_entropy_method(
         # count the number of times each action chosen
         mean = tf.reduce_mean(best_actions, axis=1) #[o,h,a]
         mean = tf.math.log(mean + 1e-6)#[o,h,a]
-
-    # mean = tf.Print(mean, [mean[0, 0]], summarize=8, message="Mean: ")
-
-    
 
     return mean, stddev, best_single, return_ #[o,h,a]=actvalue (one iteration)
 
