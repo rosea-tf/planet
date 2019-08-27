@@ -133,23 +133,31 @@ def cross_entropy_method(
 
 tf.enable_eager_execution()
 
-Perf = namedtuple('CEMPerformance', 'frameskip horizon amount rewards')
-perfs = []
-for frameskip in (1, 2, 3, 4, 5):
-  env = gym.make('Breakout-v0', frameskip=frameskip)
-  for horizon in (48, 12, 24, 36, 48, 60, 72, 84):
-    for amount in (500, 1000, 2000):
-      env.reset()
-      # env.render()
-      print("Horizon {}, amount {}".format(horizon, amount))
-      rewards = cross_entropy_method(env, horizon)
-      print("reward max", rewards.max())
-      # perfs['{}/{}/{}'.format(frameskip, horizon, amount)] = return_.numpy()
-      perfs.append(Perf(frameskip, horizon, amount, rewards))
-      # with open('perfs.json', 'w') as outfile:
-        # json.dump(perfs, outfile)
+Perf = namedtuple('Perf', 'frameskip horizon amount rewards')
 
-      with open('perfs.pkl', 'wb') as outfile:
-        pickle.dump(perfs, outfile)
 
-env.close()
+for envt in ['Freeway-v0', 'Qbert-v0']: #, Breakout-v0 already tested
+  perfs = []
+  for frameskip in (1, 2, 3, 4, 5):
+    # in all cases: default is to sample uniformly from {2,3,4}
+    env = gym.make(envt, frameskip=frameskip)
+    for horizon in (12, 24, 36, 48, 60, 72, 84):
+      for amount in (500, 1000, 2000):
+        env.reset()
+
+        # one random step to get it going
+        env.step(np.random.randint(env.action_space.n))
+
+        # env.render()
+        print("Horizon {}, amount {}".format(horizon, amount))
+        rewards = cross_entropy_method(env, horizon)
+        print("reward max", rewards.max())
+        # perfs['{}/{}/{}'.format(frameskip, horizon, amount)] = return_.numpy()
+        perfs.append(Perf(frameskip, horizon, amount, rewards))
+        # with open('perfs.json', 'w') as outfile:
+          # json.dump(perfs, outfile)
+
+        with open(f'realcem_{envt}.pkl', 'wb') as outfile:
+          pickle.dump(perfs, outfile)
+
+  env.close()
