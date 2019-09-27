@@ -130,8 +130,8 @@ def define_model(data, trainer, config):
       tools.nested.map(lambda tensor: 
         tf.concat(
           [
-            tf_repeat(tensor[:, :, 0:1], [1, tau])[:, :max_os_length],
-            tf_repeat(tensor[:, :, 1:], [1, tau, tau])[:, :max_os_length, :max_os_length] #it may over-tile, so we cut it off
+            tf_repeat(tensor[:, :, 0:1], [1, tau])[:, :config.batch_shape[1]],
+            tf_repeat(tensor[:, :, 1:], [1, tau, tau])[:, :config.batch_shape[1], :max_os_length] #it may over-tile, so we cut it off
           ]
           , axis=2)
     , cellout[1:3])
