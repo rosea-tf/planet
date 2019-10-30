@@ -152,17 +152,17 @@ def _model_components(config, params):
           **kwargs))
   
   # ADR: time-invariant predictor
-  tap_cell = params.get('tap_cell', None)
+  tap_cell_tuple = params.get('tap_cell', None)
   
-  if tap_cell is None:
+  if tap_cell_tuple is None:
     config.tap_cell = None
   else:
-    size, state_size = size_list[0], state_size_list[0]
-    Tap_Class = _model_selector(tap_cell)
+    tap_celltype, tap_size, tap_state_size = tap_cell_tuple
     
     # copy params for now -- later, could specify different ones
     config.tap_cell = functools.partial(
-      Tap_Class, state_size, size, size, # state_size, belief_size, embed_size
+      # Tap_Class, state_size, size, size, # state_size, belief_size, embed_size
+      _model_selector(tap_celltype), tap_state_size, tap_size, tap_size, # state_size, belief_size, embed_size
       params.get('future_rnn', False),
       params.get('mean_only', False),
       params.get('min_stddev', 1e-1))
