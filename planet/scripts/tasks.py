@@ -58,6 +58,15 @@ def cartpole_swingup(config, params):
   return Task('cartpole_swingup', env_ctor, max_length, state_components)
 
 
+def cartpole_swingup_da(config, params):
+  action_repeat = params.get('action_repeat', 4)
+  max_length = 1000 // action_repeat
+  state_components = ['reward', 'position', 'velocity']
+  env_ctor = functools.partial(
+      _dm_control_env, action_repeat, max_length, 'cartpole', 'swingup', discretise=[[-1.0],[-0.25],[0.0],[0.25],[1.0]])
+  return Task('cartpole_swingup_da', env_ctor, max_length, state_components)
+
+
 def finger_spin(config, params):
   action_repeat = params.get('action_repeat', 2)
   max_length = 1000 // action_repeat
