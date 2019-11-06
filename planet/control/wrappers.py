@@ -130,12 +130,14 @@ class SelectObservations(object):
 
 class PixelObservations(object):
 
-  def __init__(self, env, size=(64, 64), dtype=np.uint8, key='image'):
+  def __init__(self, env, size=(64, 64), dtype=np.uint8, key='image', image_crop=None, image_grey=False):
     assert isinstance(env.observation_space, gym.spaces.Dict)
     self._env = env
     self._size = size
     self._dtype = dtype
     self._key = key
+    self._image_crop=image_crop
+    self._image_grey=image_grey
 
   def __getattr__(self, name):
     return getattr(self._env, name)
@@ -143,7 +145,7 @@ class PixelObservations(object):
   @property
   def observation_space(self):
     high = {np.uint8: 255, np.float: 1.0}[self._dtype]
-    image = gym.spaces.Box(0, high, self._size + (3,), dtype=self._dtype)
+    image = gym.spaces.Box(0, high, self._size + (3 if not self._image_grey else 1,), dtype=self._dtype)
     spaces = self._env.observation_space.spaces.copy()
     assert self._key not in spaces
     spaces[self._key] = image
@@ -165,6 +167,17 @@ class PixelObservations(object):
 
   def _render_image(self):
     image = self._env.render('rgb_array')
+
+    # ADR: optionally crop image
+    if self._image_crop:
+      x0, y0, x1, y1 = self._image_crop
+      image = image[y0:y1+1, x0:x1+1]
+
+    # ADR: optionally greyscale image
+    if self._image_grey:
+      # add back the axis that rgb2gray removes
+      image = skimage.color.rgb2gray(image)[..., None]
+
     if image.shape[:2] != self._size:
       kwargs = dict(
           output_shape=self._size, mode='edge', order=1, preserve_range=True)

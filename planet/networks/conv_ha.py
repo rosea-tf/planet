@@ -52,21 +52,22 @@ def decoder(state, data_shape, dumbnet=False):
   kwargs = dict(strides=2, activation=tf.nn.relu)
   hidden = tf.layers.dense(state, 1024, None)
   hidden = tf.reshape(hidden, [-1, 1, 1, hidden.shape[-1].value])
+  n_colors = data_shape[-1]
 
   if not dumbnet:
     hidden = tf.layers.conv2d_transpose(hidden, 128, 5, **kwargs)
     hidden = tf.layers.conv2d_transpose(hidden, 64, 5, **kwargs)
     hidden = tf.layers.conv2d_transpose(hidden, 32, 6, **kwargs)
-    hidden = tf.layers.conv2d_transpose(hidden, 3, 6, strides=2)
+    hidden = tf.layers.conv2d_transpose(hidden, n_colors, 6, strides=2)
 
   else:
     hidden = tf.layers.conv2d_transpose(hidden, 2, 5, **kwargs)
     hidden = tf.layers.conv2d_transpose(hidden, 2, 5, **kwargs)
     hidden = tf.layers.conv2d_transpose(hidden, 2, 6, **kwargs)
-    hidden = tf.layers.conv2d_transpose(hidden, 3, 6, strides=2)
+    hidden = tf.layers.conv2d_transpose(hidden, n_colors, 6, strides=2)
 
   mean = hidden
-  assert mean.shape[1:].as_list() == [64, 64, 3], mean.shape
+  assert mean.shape[1:].as_list() == [64, 64, n_colors], mean.shape
   mean = tf.reshape(mean, tools.shape(state)[:-1] + data_shape)
   dist = tfd.Normal(mean, 1.0)
   dist = tfd.Independent(dist, len(data_shape))
