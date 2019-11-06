@@ -49,6 +49,21 @@ def cartpole_balance_da(config, params):
   return Task('cartpole_balance_da', env_ctor, max_length, state_components)
 
 
+def cartpole_balance_daf(config, params):
+  # can we get it to perfect scores, using finer controls?
+  action_repeat = params.get('action_repeat', 4)
+  max_length = 1000 // action_repeat
+  state_components = ['reward', 'position', 'velocity']
+  env_ctor = functools.partial(
+      _dm_control_env,
+      action_repeat,
+      max_length,
+      'cartpole',
+      'balance',
+      discretise=[[-1.0], [-0.25], [-0.05], [-0.01], [0.0], [0.01], [0.05], [0.25], [1.0]])
+  return Task('cartpole_balance_daf', env_ctor, max_length, state_components)
+
+
 def cartpole_swingup(config, params):
   action_repeat = params.get('action_repeat', 8)
   max_length = 1000 // action_repeat
@@ -65,6 +80,34 @@ def cartpole_swingup_da(config, params):
   env_ctor = functools.partial(
       _dm_control_env, action_repeat, max_length, 'cartpole', 'swingup', discretise=[[-1.0],[-0.25],[0.0],[0.25],[1.0]])
   return Task('cartpole_swingup_da', env_ctor, max_length, state_components)
+
+
+def cartpole_swingup_daf(config, params):
+  action_repeat = params.get('action_repeat', 4)
+  max_length = 1000 // action_repeat
+  state_components = ['reward', 'position', 'velocity']
+  env_ctor = functools.partial(
+      _dm_control_env,
+      action_repeat,
+      max_length,
+      'cartpole',
+      'swingup',
+      discretise=[[-1.0], [-0.25], [-0.05], [-0.01], [0.0], [0.01], [0.05], [0.25], [1.0]])
+  return Task('cartpole_swingup_daf', env_ctor, max_length, state_components)
+
+
+def cartpole_swingupsparse_daf(config, params):
+  action_repeat = params.get('action_repeat', 4)
+  max_length = 1000 // action_repeat
+  state_components = ['reward', 'position', 'velocity']
+  env_ctor = functools.partial(
+      _dm_control_env,
+      action_repeat,
+      max_length,
+      'cartpole',
+      'swingup_sparse',
+      discretise=[[-1.0], [-0.25], [-0.05], [-0.01], [0.0], [0.01], [0.05], [0.25], [1.0]])
+  return Task('cartpole_swingupsparse_daf', env_ctor, max_length, state_components)
 
 
 def finger_spin(config, params):
@@ -163,7 +206,7 @@ def gym_qbert(config, params):
       'Qbert-v0', obs_is_image=True)
   return Task('gym_qbert', env_ctor, max_length, state_components)
 
-  
+
 def _dm_control_env(action_repeat, max_length, domain, task, discretise=None):
   from dm_control import suite
   env = control.wrappers.DeepMindWrapper(suite.load(domain, task), (64, 64))
@@ -173,9 +216,9 @@ def _dm_control_env(action_repeat, max_length, domain, task, discretise=None):
   env = control.wrappers.ConvertTo32Bit(env)
 
   # if we are discretising:
-    # a wrapper that converts list of fixed actions in original space [[x1, y1], [x2, y2], [x3, y3]]
-    # into an artificial n-dim space [a, b, c]
-    # which then gets selected with combinatorial CEM and maxed, as before.
+  # a wrapper that converts list of fixed actions in original space [[x1, y1], [x2, y2], [x3, y3]]
+  # into an artificial n-dim space [a, b, c]
+  # which then gets selected with combinatorial CEM and maxed, as before.
 
   if discretise:
     env = control.wrappers.Discretizer(env, action_set=discretise)
@@ -192,7 +235,7 @@ def _gym_env(action_repeat, min_length, max_length, name, obs_is_image=False, ex
     env = control.wrappers.ActionRepeat(env, action_repeat)
   else:
     env = gym.make(name, frameskip=action_repeat)
-  
+
   ### ADR: additions to cope with discrete action spaces
   if isinstance(env.action_space, gym.spaces.Box):
     env = control.wrappers.NormalizeActions(env)
