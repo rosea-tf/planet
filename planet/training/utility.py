@@ -199,10 +199,29 @@ def compute_losses(
     if not scale:
       continue
     elif key == 'divergence':
-      loss = divergence_from_states(posterior, prior, mask)
+      loss = divergence_from_states(posterior, prior, mask) #p, p: 5,10,1,30 -> dfs: 5,10,1 (yup)
       if free_nats is not None:
         loss = tf.maximum(tf.cast(free_nats, tf.float32), loss)
       loss = tf.reduce_sum(loss, 1) / tf.reduce_sum(tf.to_float(mask), 1)
+    elif key == 'cell_as_prior':
+      # prior and posterior have already been catted together from the various cells.
+      # we work with this, like so:
+      loss = 0
+
+      cell_mean_sizes = tools.nested.map(lambda cell: cell.state_size['mean'], cells)
+
+      posterior_cells = tools.nested.map(lambda p: tf.split(p, cell_mean_sizes, axis=-1), {k: v for k, v in posterior.items() if k in ['mean','stddev']})
+
+      for i in range(1, len(cells)):
+
+        # based on the convention that fast cells come first,
+        # each cell's posterior functions as a prior for the previous cell, a la FTW agent (see CTF paper)
+        slow_prior = {k: v[i] for k, v in posterior_cells.items()}
+        fast_posterior = {k: v[i-1] for k, v in posterior_cells.items()}
+
+        # this will fail if they are different sizes -- so keep them the same
+        loss += divergence_from_states(fast_posterior, slow_prior, mask) # remember: this only looks at mean and stddev
+
     elif key == 'global_divergence':
       global_prior = {
           'mean': tf.zeros_like(prior['mean']),

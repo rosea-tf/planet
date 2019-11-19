@@ -203,6 +203,7 @@ def _loss_functions(config, params):
   config.zero_step_losses.image = params.get('image_loss_scale', 1.0)
   config.zero_step_losses.divergence = params.get('divergence_scale', 1.0)
   config.zero_step_losses.global_divergence = params.get('global_divergence_scale', 0.1)
+  config.zero_step_losses.cell_as_prior = params.get('cell_as_prior', 0.0)
   config.zero_step_losses.reward = params.get('reward_scale', 10.0)
   config.overshooting = params.get('overshooting', config.batch_shape[1] - 1)
   config.overshooting_losses = config.zero_step_losses.copy(_unlocked=True)
