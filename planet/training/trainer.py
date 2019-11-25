@@ -24,6 +24,8 @@ import tensorflow as tf
 import numpy as np #ADR
 from planet import tools
 
+from tensorflow.core.protobuf import rewriter_config_pb2 #ADR
+
 
 _Phase = collections.namedtuple(
     'Phase',
@@ -320,6 +322,13 @@ class Trainer(object):
     """
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
+    
+    
+    # ADR: self._config.etc is available here
+    off = rewriter_config_pb2.RewriterConfig.OFF
+    
+    config.graph_options.rewrite_options.arithmetic_optimization = off
+    
     try:
       return tf.Session('local', config=config)
     except tf.errors.NotFoundError:
