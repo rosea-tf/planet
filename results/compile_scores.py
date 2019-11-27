@@ -51,7 +51,7 @@ class Timer(object):
 root_folder = sys.argv[1]
 output_file = sys.argv[2]
 
-def get_scores(log_folder):
+def get_scores(log_folder, graphkey):
 
   with Timer():
     ea = event_accumulator.EventAccumulator(log_folder,
@@ -66,16 +66,40 @@ def get_scores(log_folder):
   with Timer():
     ea.Reload() # loads events from file
   
-  return [e.value for e in ea.Scalars('trainer/graph/phase_test/cond_2/trainer/test/score')]
+  return [e.value for e in ea.Scalars(graphkey)]
+  # [e.value for e in ea.Scalars('trainer/graph/phase_test/cond_2/trainer/test/score')]
 
-score_dict = {}
+results = {}
+
+# [subdir, scalar key]
+scalar_dict = {
+  'test_score': ['test', 'trainer/graph/phase_test/cond_2/trainer/test/score'],
+  'image_loss': ['train', 'graph/summaries/general/zero_step_losses/image'], 
+  'reward_loss': ['train', 'graph/summaries/general/zero_step_losses/reward']
+}
 
 for loc, dirs, files in os.walk(root_folder):
-  if dirs == ['00001']: # we have a run folder here
-    score_dict[os.path.basename(loc)] = get_scores(os.path.join(loc, dirs[0], 'test'))
+  print('Looking at :', loc)
+  for dir in dirs:
+    if dir == '00001': # we have a run folder here
+      print('Found an 00001 at :', loc)
+      
+      # initialise results sub-dictionary
+      loc_results = {}
+
+      for scalar, [subdir, graphkey] in scalar_dict.items():
+        path = os.path.join(loc, dir, subdir)
+        try:
+          loc_results[scalar] = get_scores(path, graphkey)
+          print(graphkey, ' fetched from :', path)
+        except:
+          print("Couldn't get ", graphkey, " from ", path)
+          loc_results[scalar] = [0]
+      
+      results[os.path.basename(loc)] = loc_results
 
 with open(output_file, 'w') as outfile:
-    json.dump(score_dict, outfile)
+    json.dump(results, outfile)
 
 # if ('scalars' in summaries):
 # 	print(' ')
