@@ -58,10 +58,6 @@ def define_summaries(graph, config):
         summaries.append(tf.summary.scalar(
             'seconds_per_step', delta_time / delta_step))
 
-  #TODO - fix
-  # if len(graph.cells) == 1:
-    # cell = graph.cells[0]
-  
   lstCells_prpo_dictTens = []
   lstCells_prpo_dictTens_xp = []
   horizon = tools.shape(graph.embedded)[1]
@@ -77,7 +73,7 @@ def define_summaries(graph, config):
         with tf.variable_scope('cell_{}'.format(i)):
           _embedded = graph.embedded[:, ::_tau]
           _prev_action = graph.prev_action[:, ::_tau]
-          _mask = mask[:, ::_tau] #check?
+          _mask = mask[:, ::_tau]
 
           # separate: one p/p for each cell, sep. scopes
           _prior, _posterior = tools.unroll.closed_loop(

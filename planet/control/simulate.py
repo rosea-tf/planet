@@ -81,12 +81,12 @@ def collect_rollouts(
     init_extras = {
         'plan_returns_begin':
             tf.zeros([
-                1, #batch goes here??
+                1,
                 agent._config['planner'].keywords['amount']
             ], tf.float32),
         'plan_returns_end':
             tf.zeros([
-                1, #batch goes here??
+                1,
                 agent._config['planner'].keywords['amount']
             ], tf.float32)
     }

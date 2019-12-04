@@ -337,9 +337,7 @@ class DiscreteActionWrap(object):
     assert np.min(action) == 0
     assert np.sum(action) == 1
 
-    # choice = np.argmax(action)
-    # assert action[action_choice] == 1
-
+    # note: line below is weighted by `action`. not a random choice :)
     choice = np.random.choice(np.arange(len(action), dtype=int), p=action)
 
     return self._env.step(choice)

@@ -24,9 +24,9 @@ for envt in ['Freeway-v0', 'Qbert-v0', 'Breakout-v0', 'MsPacman-v0', 'Seaquest-v
   fig = plt.figure()
   ax = fig.add_subplot(111, projection = "3d")
 
-  ax.set_xlabel("frameskip")
-  ax.set_ylabel("horizon") 
-  ax.set_zlabel("return")
+  ax.set_xlabel("Frameskip")
+  ax.set_ylabel("Horizon length") 
+  ax.set_zlabel("Best return found")
 
 
   ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
@@ -67,4 +67,4 @@ for envt in ['Freeway-v0', 'Qbert-v0', 'Breakout-v0', 'MsPacman-v0', 'Seaquest-v
 
 
   plt.gca().invert_xaxis()
-  plt.savefig(f'realcem/{envt}_hpchart')
+  plt.savefig(f'realcem/{envt}_hpchart', dpi=200)

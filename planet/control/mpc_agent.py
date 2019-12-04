@@ -50,6 +50,7 @@ class MPCAgent(object):
         'prev_action_var', shape=self._batch_env.action.shape,
         initializer=lambda *_, **__: tf.zeros_like(self._batch_env.action),
         use_resource=True)
+    
     # ADR - new - for CEM warm starts
     if self._config.warm_start:
       orig_shape = tools_shape(self._batch_env.action)
@@ -113,7 +114,7 @@ class MPCAgent(object):
     discrete_action = self._config.planner.keywords['discrete_action']
 
     # get the means (or log probs, in the discrete case)
-    mean, single, plan_returns = self._config.planner(
+    mean, single, plan_returns = self._config.planner( #see planning.py
         cells=self._cells,
         cw_taus=self._config.cw_taus,
         objective_fn=self._config.objective, 

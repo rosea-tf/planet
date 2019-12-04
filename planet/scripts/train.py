@@ -50,11 +50,6 @@ matplotlib.use('Agg')
 import ruamel.yaml as yaml
 import tensorflow as tf
 
-# # ADDITION TO SUPPORT THIS SCRIPT BEING RUN DIRECTLY
-# if os.path.basename(sys.path[0]) == 'scripts':
-#     # back up to 'planet' folder
-#     sys.path[0] = os.path.dirname(os.path.dirname(sys.path[0]))
-
 from planet import tools
 from planet import training
 from planet.scripts import configs

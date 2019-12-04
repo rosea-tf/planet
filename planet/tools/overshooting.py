@@ -65,7 +65,7 @@ def overshooting(
       [1 1 1 1 0 0] [1 1 1 0 0 0]
       [1 1 1 0 0 0] [1 1 0 0 0 0]
 
-  """ #so, target = posterior s (from s-1, o)?
+  """
   
   # Closed loop unroll to get posterior states, which are the starting points
   # for open loop unrolls. We don't need the last time step, since we have no
@@ -153,7 +153,7 @@ def overshooting(
 
   sequences = nested.map( #Apply a function to every element in a nested structure
       lambda lhs, rhs: tf.concat([lhs[None], rhs], 0),
-      first_output, other_outputs) #11x5x10x30??? where 5 is batch, 1
+      first_output, other_outputs) #11x5x10x30: where 5 is batch, 1
 
   """
   Sequences now pastes the "full seq" (unpadded) entry to the front of each entry
@@ -266,7 +266,7 @@ array([[[1. , 1.2, 1.4, 1.6, 1.8],
   target, prior, posterior, mask = nested.map(
       functools.partial(_restore_batch_dim, batch_size=shape.shape(length)[0]),
       (sequences['target'], priors, sequences['posterior'], sequences['mask']))
-      #now in 5x10x11x30 (11 is prediction?)
+      #now in 5x10x11x30 (11 is prediction)
 
   mask = tf.cast(mask, tf.bool)
   return target, prior, posterior, mask
