@@ -157,8 +157,9 @@ def _read_episodes_dummy(
 def _read_episode(
     filename, resize=None, sub_sample=None, max_length=None,
     action_noise=None):
-  with tf.gfile.Open(filename, 'rb') as file_:
-    episode = np.load(file_)
+  #with tf.gfile.Open(filename, 'rb') as file_:
+  #  episode = np.load(file_)
+  episode = np.load(filename)
   episode = {key: _convert_type(episode[key]) for key in episode.keys()}
   for key in ('bias', 'discount'):
     if key in episode:
