@@ -102,31 +102,3 @@ for loc, dirs, files in os.walk(root_folder):
 
 with open(output_file, 'w') as outfile:
     json.dump(results, outfile)
-
-# if ('scalars' in summaries):
-# 	print(' ')
-# 	csvFileName =  os.path.join(outputFolder,'scalars.csv')
-# 	print('Exporting scalars to csv-file...')
-# 	print('   CSV-path: ' + csvFileName)
-# 	scalarTags = tags['scalars']
-# 	with Timer():
-# 		with open(csvFileName,'w') as csvfile:
-# 			logWriter = csv.writer(csvfile, delimiter=',')
-
-# 			# Write headers to columns
-# 			headers = ['wall_time','step']
-# 			for s in scalarTags:
-# 				headers.append(s)
-# 			logWriter.writerow(headers)
-	
-# 			vals = ea.Scalars(scalarTags[0])
-# 			for i in range(len(vals)):
-# 				v = vals[i]
-# 				data = [v.wall_time, v.step]
-# 				for s in scalarTags:
-# 					scalarTag = ea.Scalars(s)
-# 					S = scalarTag[i]
-# 					data.append(S.value)
-# 				logWriter.writerow(data)
-
-

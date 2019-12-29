@@ -168,10 +168,3 @@ while not done:
 
 env.close()
 
-#%%
-# with open('rewards.pkl', 'rb') as file:
-#   rewards = pickle.load(file)
-
-# rewards.shape
-
-# rewards.sum(axis=1)

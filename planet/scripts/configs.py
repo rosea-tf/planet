@@ -39,7 +39,7 @@ def default(config, params):
   config = _loss_functions(config, params)
   config = _training_schedule(config, params)
 
-  #ADR - TODO, move these outside default?
+  #ADR - extras
   config.dumbnet = params.get('dumbnet', False)
   config.collect_latents = params.get('collect_latents', False)
   config.discrete_action = params.get('discrete_action', False)
@@ -52,7 +52,7 @@ def default(config, params):
 def debug(config, params):
   with params.unlocked:
     params.collect_every = 20
-    params.batch_shape = [5, 10] #rssm.py has only a 1d batch.. so 10 must be sequence length
+    params.batch_shape = [5, 10] #batch x seq_len
     params.train_steps = 30
     params.test_steps = 30
     params.max_steps = 100 * (30 * 30)

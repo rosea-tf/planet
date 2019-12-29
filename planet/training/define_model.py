@@ -161,7 +161,7 @@ def define_model(data, trainer, config):
 
   losses = []
 
-  # Zero step losses. Reconstruction??
+  # Zero step losses
   # :1 = only first prediction. result=[5x10x1x30]: a horizontal row in fig3c
   _, zs_prior, zs_posterior, zs_mask = tools.nested.map(
       lambda tensor: tensor[:, :, :1], (target, prior, posterior, mask))
@@ -217,7 +217,7 @@ def define_model(data, trainer, config):
   # ADR - time agnostic predictions
   if tap_cell is not None:
     # and then for a subgoal...
-    # in planning step: obj fn = divergence between tap_cell-dist and cell-dist (weighted? how?)
+    # in planning step: obj fn = divergence between tap_cell-dist and cell-dist
 
     tap_losses = utility.compute_tap_losses(
       loss_scales=config.zero_step_losses, 

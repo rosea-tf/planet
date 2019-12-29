@@ -42,7 +42,7 @@ class RSSM(base.Base): #inherits from RNN cell
                   ^
                   :
                  (o)
-  """ # is this diagram what "temporal prior" refers to?
+  """ 
 
   """
   
@@ -70,8 +70,8 @@ class RSSM(base.Base): #inherits from RNN cell
       future_rnn, mean_only, min_stddev):
     # removed defaults for future_rnn, mean_only, min_stddev - these should always be specified via the .partial constructor set up in configs.py
     
-    self._state_size = state_size # dim of latent state?: 30
-    self._belief_size = belief_size # h: both these come from model_size->size in configs.py: 200
+    self._state_size = state_size # stochastic: 30
+    self._belief_size = belief_size # deterministic: both these come from model_size->size in configs.py: 200
     self._embed_size = embed_size
     self.future_rnn = future_rnn
     self._cell = tf.contrib.rnn.GRUBlockCell(self._belief_size) #num_units (i.e. output size)=200
@@ -85,10 +85,10 @@ class RSSM(base.Base): #inherits from RNN cell
   @property
   def state_size(self):
     return {
-        'mean': self._state_size, #so mean is a ~30D vector...
+        'mean': self._state_size, #a 30D vector...
         'stddev': self._state_size,
         'sample': self._state_size,
-        'belief': self._belief_size, #observation space??
+        'belief': self._belief_size,
         'rnn_state': self._belief_size,
     }
 
@@ -107,10 +107,10 @@ class RSSM(base.Base): #inherits from RNN cell
     if self.future_rnn:
       hidden = belief
     
-    hidden = tf.layers.dense(hidden, **self._kwargs) #??? RNN output used in posterior
+    hidden = tf.layers.dense(hidden, **self._kwargs)
     mean = tf.layers.dense(hidden, self._state_size, None)
     stddev = tf.layers.dense(hidden, self._state_size, tf.nn.softplus)
-    stddev += self._min_stddev #??? not a min operation?
+    stddev += self._min_stddev
     if self._mean_only:
       sample = mean
     else:
