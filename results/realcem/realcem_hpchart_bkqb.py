@@ -12,50 +12,37 @@ import matplotlib.ticker as ticker
 
 Perf = namedtuple('Perf', 'frameskip horizon amount rewards')
 
+fig = plt.figure(figsize=(10,4))
 
-for envt in ['Freeway-v0', 'Qbert-v0', 'Breakout-v0', 'MsPacman-v0', 'Seaquest-v0']:
+for i, envt in enumerate(['Breakout-v0', 'Qbert-v0']):
+
 
   with open(f'realcem/realcem_{envt}.pkl', 'rb') as file:
     perfs = pickle.load(file)
     perfs = [p for p in perfs if p.frameskip >= 2]
     print(envt, set([p.horizon for p in perfs]))
 
-
-  fig = plt.figure()
-  ax = fig.add_subplot(111, projection = "3d")
-
+  ax = fig.add_subplot(1, 2, i + 1, projection = "3d")
+  ax.set_title(envt.replace('-v0',''), pad=20)
   ax.set_xlabel("Frameskip")
   ax.set_ylabel("Horizon length") 
   ax.set_zlabel("Best return found")
-
-
   ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
-
 
   # ax.set_xlim3d(0,4)
   # ax.set_ylim3d(0,4) 
 
   #horizon
-
-  # x = np.arange(7) + 1
-  # y = np.arange(3) + 1
-  # xpos, ypos = [a.ravel() for a in np.meshgrid(x, y)]
-  # xpos = [1,2,3,1,2,3,1,2,3]
-  # xpos = ['a','b','c','a','b','c','a','b','c',]
-  #frameskip
-  # xpos = [1,1,1,2,2,2,3,3,3]
   xpos = [p.frameskip for p in perfs]
   ypos = [p.horizon for p in perfs]
   zpos = [0 for p in perfs]
-  #samples
-  # zpos = np.zeros(21)
 
   dx = np.ones_like(xpos)
   dy = np.ones_like(ypos)
 
   amounts = [p.amount for p in perfs]
 
-  dz = [np.random.random(21) for i in range(4)]  # the heights of the 4 bar sets
+  dz = [np.random.random(21) for _ in range(4)]  # the heights of the 4 bar sets
 
   # _zpos = zpos   # the starting zpos for each bar
   colors = {500: 'r', 1000: 'b', 1500: 'g', 2000: 'g'}
@@ -67,4 +54,12 @@ for envt in ['Freeway-v0', 'Qbert-v0', 'Breakout-v0', 'MsPacman-v0', 'Seaquest-v
 
 
   plt.gca().invert_xaxis()
-  plt.savefig(f'realcem/{envt}_hpchart', dpi=200)
+
+dummies = [plt.Rectangle((0, 0), 1, 1, fc=col, alpha=0.5) for col in ['r','b','g']]
+
+fig.legend(
+  dummies,
+  ['500','1000','1500'], title='CEM samples per iteration'
+)
+fig.tight_layout()
+plt.savefig(f'realcem/horizon_test', dpi=200)

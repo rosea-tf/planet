@@ -1,5 +1,12 @@
 __pycache__/
+/runs
+/scratch
+/dist
+/notes
+MUJOCO_LOG.TXT
 *.py[cod]
 *.egg-info
-/dist
-MUJOCO_LOG.TXT
+*.xmind
+*.png
+*.pkl
+*.npz
