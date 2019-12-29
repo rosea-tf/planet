@@ -71,19 +71,22 @@ def get_hists(log_folder, graphkey):
   # event_acc.Reload()
   # tags = event_acc.Tags()
   
-  histograms = ea.Histograms(graphkey)
-
-  result = np.array([np.repeat(np.array(h.histogram_value.bucket_limit), np.array(h.histogram_value.bucket).astype(np.int)) for h in histograms])
+  for tag in ea.Tags()['histograms']:
+    if tag.endswith(graphkey):
+      histograms = ea.Histograms(tag)
+      result = np.array([np.repeat(np.array(h.histogram_value.bucket_limit), np.array(h.histogram_value.bucket).astype(np.int)) for h in histograms])
+      return result
   
   # print("duhh", result)
 
-  return result
+  return [0]
 
 results = {}
 
 # [subdir, scalar key]
 hist_dict = {
-  'cem_returns': ['test', 'graph/summaries/simulation/should_simulate_gym_breakout/summary-gym_breakout-cem-60/return_hist'],
+  # 'cem_returns': ['test', 'graph/summaries/simulation/should_simulate_gym_breakout/summary-gym_breakout-cem-60/return_hist'],
+  'cem_returns': ['test', 'return_hist'],
 }
 
 for loc, dirs, files in os.walk(root_folder):
@@ -97,13 +100,13 @@ for loc, dirs, files in os.walk(root_folder):
 
       for hist, [subdir, graphkey] in hist_dict.items():
         path = os.path.join(loc, dir, subdir)
-        loc_results[hist] = get_hists(path, graphkey)
-        # try:
-        #   loc_results[hist] = get_hists(path, graphkey)
-        #   print(graphkey, ' fetched from :', path)
-        # except:
-        #   print("Couldn't get ", graphkey, " from ", path)
-        #   loc_results[hist] = [0]
+        # loc_results[hist] = get_hists(path, graphkey)
+        try:
+          loc_results[hist] = get_hists(path, graphkey)
+          print(graphkey, ' fetched from :', path)
+        except:
+          print("Couldn't get ", graphkey, " from ", path)
+          loc_results[hist] = [0]
       
       results[os.path.basename(loc)] = loc_results
 

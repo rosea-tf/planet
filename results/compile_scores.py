@@ -75,7 +75,9 @@ results = {}
 scalar_dict = {
   'test_score': ['test', 'trainer/graph/phase_test/cond_2/trainer/test/score'],
   'image_loss': ['train', 'graph/summaries/general/zero_step_losses/image'], 
-  'reward_loss': ['train', 'graph/summaries/general/zero_step_losses/reward']
+  'reward_loss': ['train', 'graph/summaries/general/zero_step_losses/reward'],
+  'image_loss_te': ['test', 'graph/summaries/general/zero_step_losses/image'], 
+  'reward_loss_te': ['test', 'graph/summaries/general/zero_step_losses/reward'],
 }
 
 for loc, dirs, files in os.walk(root_folder):
