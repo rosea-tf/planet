@@ -10,59 +10,56 @@ with open("create_runs_template.sh", "r") as template_file:
 
 
 default_params = ['max_steps: 3e6']
-# compare on random dataset
-# default_params = ['max_steps: 1e6']
 
 Setting = collections.namedtuple('Setting', 'code, params, desc')
 
-# set_expl = [
-#     Setting('x10', 'exploration_noises: [0.1]', 'Low epsilon exploration'),
-#     Setting('x20', 'exploration_noises: [0.2]', 'Med epsilon exploration'),
-#     Setting('x30', 'exploration_noises: [0.3]', 'High epsilon exploration'),
-# ]
+set_expl = [
+    Setting('x10', 'exploration_noises: [0.1]', 'Low epsilon exploration'),
+    Setting('x20', 'exploration_noises: [0.2]', 'Med epsilon exploration'),
+    Setting('x30', 'exploration_noises: [0.3]', 'High epsilon exploration'),
+]
 
 set_null = [
     Setting('', '', ''),
 ]
 
 set_hyp = [
-    # Setting('p0', '', 'HPs from Paper'),
-    # Setting('p0_rwt', 'overshooting_reward_scale: 1e5, reward_scale: 1e5', 'HPs from Paper (1e5 Reward Wt)'),
+    Setting('p0', '', 'HPs from Paper'),
+    Setting('p0_rwt', 'overshooting_reward_scale: 1e5, reward_scale: 1e5', 'HPs from Paper (1e5 Reward Wt)'),
     Setting(
         'pc',
         'future_rnn: true, free_nats: 3.0, overshooting: 0, global_divergence_scale: 0.0, overshooting_reward_scale: 0.0',
         'Camera Ready HPs'),
-    # Setting(
-    #     'p0_xos',
-    #     'overshooting: 0, overshooting_reward_scale: 0.0',
-    #     'HPs from Paper (Minus OS)'),
-    # Setting(
-    #     'pc_wos',
-    #     'future_rnn: true, free_nats: 3.0, global_divergence_scale: 0.0',
-    #     'Camera Ready HPs (Plus OS)'),
-    # Setting(
-    #     'pc_rwt',
-    #     'future_rnn: true, free_nats: 3.0, overshooting: 0, global_divergence_scale: 0.0, overshooting_reward_scale: 0.0, reward_scale: 1e5',
-    #     'Camera Ready HPs (1e5 Reward Wt)'),
+    Setting(
+        'p0_xos',
+        'overshooting: 0, overshooting_reward_scale: 0.0',
+        'HPs from Paper (Minus OS)'),
+    Setting(
+        'pc_wos',
+        'future_rnn: true, free_nats: 3.0, global_divergence_scale: 0.0',
+        'Camera Ready HPs (Plus OS)'),
+    Setting(
+        'pc_rwt',
+        'future_rnn: true, free_nats: 3.0, overshooting: 0, global_divergence_scale: 0.0, overshooting_reward_scale: 0.0, reward_scale: 1e5',
+        'Camera Ready HPs (1e5 Reward Wt)'),
 ]
 
 
 set_fixd = [
     Setting('', '', 'Standard'),
-    # Setting('fixd', 'collect_every: 999999999, num_seed_episodes: 1000', 'Fixed Random Episodes'),
+    Setting('fixd', 'collect_every: 999999999, num_seed_episodes: 1000', 'Fixed Random Episodes'),
 ]
 
 set_env = [
-    # Setting('ch', 'tasks: [cheetah_run]', 'Cheetah'),
-    # Setting('cc', 'tasks: [cartpole_balance]', 'Continuous cartpole'),
-    # Setting('dc', 'tasks: [cartpole_balance_da], discrete_action: true', 'Discretised cartpole'),
-    # Setting('du', 'tasks: [cartpole_swingup_da], discrete_action: true', 'Discretised cartpole-swingup'),
-    # Setting('dcf', 'tasks: [cartpole_balance_daf], discrete_action: true', 'Discretised cartpole (fine)'),
-    # Setting('duf', 'tasks: [cartpole_swingup_daf], discrete_action: true', 'Discretised cartpole-swingup (fine)'),
-    # Setting('dusf', 'tasks: [cartpole_swingupsparse_daf], discrete_action: true', 'Discretised cartpole-swingup (fine)'),
+    Setting('ch', 'tasks: [cheetah_run]', 'Cheetah'),
+    Setting('cc', 'tasks: [cartpole_balance]', 'Continuous cartpole'),
+    Setting('dc', 'tasks: [cartpole_balance_da], discrete_action: true', 'Discretised cartpole'),
+    Setting('du', 'tasks: [cartpole_swingup_da], discrete_action: true', 'Discretised cartpole-swingup'),
+    Setting('dcf', 'tasks: [cartpole_balance_daf], discrete_action: true', 'Discretised cartpole (fine)'),
+    Setting('duf', 'tasks: [cartpole_swingup_daf], discrete_action: true', 'Discretised cartpole-swingup (fine)'),
+    Setting('dusf', 'tasks: [cartpole_swingupsparse_daf], discrete_action: true', 'Discretised cartpole-swingup (fine)'),
     Setting('bk4', 'tasks: [gym_breakout], discrete_action: true', 'Atari Breakout'),
-    # Setting('fw', 'tasks: [gym_freeway], discrete_action: true', 'Atari Freeway'),
-    # Setting('qb', 'tasks: [gym_qbert], discrete_action: true', 'Atari Qbert'),
+    Setting('qb', 'tasks: [gym_qbert], discrete_action: true', 'Atari Qbert'),
 ]
 
 set_rnn = [
